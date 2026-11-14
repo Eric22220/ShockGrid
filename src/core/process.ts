@@ -1,8 +1,8 @@
 // Lanțul complet pentru o tură: semnal → ferestre → șocuri → distanță → map-matching → treceri.
 import { DEFAULT_CONFIG, type VibrationConfig } from './config';
 import type { Graph } from './graph';
-import { GpsTrack, computeDistance } from './gpstrack';
-import { assignPasses, assignWindows, matchFixes } from './mapmatch';
+import { GpsTrack, computeDistance, distanceAt } from './gpstrack';
+import { assignOffsets, assignPasses, assignWindows, matchFixes } from './mapmatch';
 import { hashString, median, medianOrNull } from './stats';
 import type { DeclaredSurface, ProcessedRide, RawRide, RideSummary } from './types';
 import { computeSignal, computeWindows, detectShocks, downsampleSignal, type Signal } from './vibration';
@@ -66,6 +66,7 @@ export function processRide(raw: RawRide, opts: ProcessOptions = {}): ProcessedR
   const windows = computeWindows(raw, sig, cfg, track, dist.cum);
   prog('șocuri', 0.55);
   const shocks = detectShocks(raw, sig, cfg, track);
+  for (const s of shocks) s.dist = Math.round(distanceAt(track, dist.cum, s.t) * 10) / 10;
   prog('rezumat', 0.8);
   const reasons: Record<string, number> = {};
   for (const w of windows) reasons[w.reason] = (reasons[w.reason] ?? 0) + 1;
@@ -112,6 +113,7 @@ export function matchProcessed(p: ProcessedRide, graph: Graph, cfg: VibrationCon
   for (const s of p.shocks) { s.edge = -1; s.pass = -1; }
   const m = matchFixes(p.gps, graph, cfg, declared);
   assignWindows(p.windows, p.gps, m);
+  assignOffsets(p.windows, graph);
   assignPasses(p.windows, cfg.pass_gap_s);
   for (const s of p.shocks) {
     const w = p.windows.find((w) => s.t >= w.t0 && s.t < w.t1 && w.edge >= 0) ?? null;

@@ -160,6 +160,48 @@ export class Graph {
     return [...best.values()].sort((a, b) => a.dist - b.dist);
   }
 
+  /** Poziția proiecției punctului pe muchie, în metri de la nodul `from` (0 … lungimea muchiei). */
+  offsetOnEdge(e: number, lat: number, lon: number): number {
+    if (!this.grid) this.buildIndex();
+    const a = this.xy![e];
+    const px = TM_PROJ.x(lon), py = TM_PROJ.y(lat);
+    let best = Infinity, off = 0, acc = 0;
+    for (let s = 0; s + 3 < a.length; s += 2) {
+      const ax = a[s], ay = a[s + 1], bx = a[s + 2], by = a[s + 3];
+      const L = Math.hypot(bx - ax, by - ay);
+      const [d, f] = pointSegment(px, py, ax, ay, bx, by);
+      if (d < best) { best = d; off = acc + f * L; }
+      acc += L;
+    }
+    // lungimea proiectată poate diferi puțin de lungimea din graf (haversine): o aducem la aceeași scară
+    return acc > 0 ? Math.max(0, Math.min(this.length[e], (off / acc) * this.length[e])) : 0;
+  }
+
+  /** Geometria muchiei între două poziții (m de la nodul `from`). */
+  slice(e: number, from_m: number, to_m: number): [number, number][] {
+    const g = this.geometry(e);
+    const L = this.length[e];
+    if (g.length < 2 || L <= 0) return g;
+    const segs: number[] = [];
+    let tot = 0;
+    for (let i = 1; i < g.length; i++) { const d = Math.hypot((g[i][0] - g[i - 1][0]) * 111195, (g[i][1] - g[i - 1][1]) * 111195 * Math.cos((g[i][0] * Math.PI) / 180)); segs.push(d); tot += d; }
+    const k = tot > 0 ? tot / L : 1;
+    const a = Math.max(0, from_m) * k, b = Math.min(L, to_m) * k;
+    const at = (x: number): [number, number] => {
+      let acc = 0;
+      for (let i = 0; i < segs.length; i++) {
+        if (acc + segs[i] >= x || i === segs.length - 1) { const f = segs[i] > 0 ? Math.max(0, Math.min(1, (x - acc) / segs[i])) : 0; return [g[i][0] + (g[i + 1][0] - g[i][0]) * f, g[i][1] + (g[i + 1][1] - g[i][1]) * f]; }
+        acc += segs[i];
+      }
+      return g[g.length - 1];
+    };
+    const out: [number, number][] = [at(a)];
+    let acc = 0;
+    for (let i = 0; i < segs.length; i++) { acc += segs[i]; if (acc > a && acc < b) out.push(g[i + 1]); }
+    out.push(at(b));
+    return out;
+  }
+
   /** cel mai apropiat nod dintre cele acceptate */
   nearestNode(lat: number, lon: number, accept: (node: number) => boolean, maxR = 400): number {
     for (const r of [30, 80, 160, maxR]) {

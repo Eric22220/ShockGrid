@@ -1,6 +1,6 @@
 import { Flag, Layers, LocateFixed, Locate, LocateOff, Search } from 'lucide-react';
 import { useMemo, useState, useSyncExternalStore } from 'react';
-import { CLASSES, snapshotRideCount, type EdgeAgg, type ShockZone } from '../../core/aggregate';
+import { ROUGH_LABEL, snapshotRideCount, type EdgeAgg, type ShockZone } from '../../core/aggregate';
 import { t } from '../../i18n/ro';
 import { rideActive, subscribeRide } from '../../services/ride';
 import { typeLabel, VISIBILITY_LABEL } from '../../services/reports';
@@ -9,7 +9,7 @@ import { rejectZone, updateSettings, useApp } from '../../state/store';
 import { UPlot } from '../charts/UPlot';
 import { CLASS_COLORS, fmt, fmtLen } from '../format';
 import { Banner, ClassBadge, Sheet } from '../kit';
-import { drawComfort, drawReports, drawTrack, drawZones, EXPLORE_COLOR } from '../map/draw';
+import { drawComfort, drawReports, drawTrack, drawZones, EXPLORE_COLOR, GREY_COLOR, ROUGH_STYLE } from '../map/draw';
 import { distToEdges } from '../../core/corridor';
 import { useLocation, useMeLayer } from '../map/me';
 import { useLayerGroup, useLeaflet } from '../map/useLeaflet';
@@ -96,12 +96,13 @@ export function MapScreen({ focus }: { focus?: string }) {
         <Sheet title="Harta confortului" onClose={() => setSel(null)}>
           <div className="stack">
             <div>
-              {CLASSES.map((c) => (
-                <div key={c} className="legend-row"><span className="legend-line" style={{ background: CLASS_COLORS[c] }} /><b style={{ width: 18 }}>{c}</b><span>{t.classShort[c]}</span></div>
+              {(['green', 'yellow', 'red'] as const).map((k) => (
+                <div key={k} className="legend-row"><span className="legend-line" style={{ background: ROUGH_STYLE[k].color, height: ROUGH_STYLE[k].weight }} /><span><b>{k === 'green' ? 'Verde' : k === 'yellow' ? 'Galben' : 'Roșu'}</b>: {ROUGH_LABEL[k]} <span className="muted">({k === 'green' ? 'A–B' : k === 'yellow' ? 'C' : 'D–E'})</span></span></div>
               ))}
-              <div className="legend-row"><span className="legend-line" style={{ background: 'repeating-linear-gradient(90deg,#5a6677 0 6px,transparent 6px 11px)' }} /><span>Linie întreruptă: puține măsurători</span></div>
-              <div className="legend-row"><span className="legend-line" style={{ background: `repeating-linear-gradient(90deg,${EXPLORE_COLOR} 0 3px,transparent 3px 8px)` }} /><span>Punctat violet: parcurs doar lent (explorare, fără clasă)</span></div>
-              <div className="legend-row"><span className="legend-line" style={{ background: 'var(--surface-3)' }} /><span>Fără culoare: încă nemăsurat (nu înseamnă neted)</span></div>
+              <div className="legend-row"><span className="legend-line" style={{ background: 'repeating-linear-gradient(90deg,#5a6677 0 7px,transparent 7px 12px)' }} /><span>Linie întreruptă: încredere redusă (o trecere, GPS slab sau ambiguu)</span></div>
+              <div className="legend-row"><span className="legend-line" style={{ height: 3, background: `repeating-linear-gradient(90deg,${GREY_COLOR} 0 2px,transparent 2px 7px)` }} /><span>Gri punctat: date insuficiente pe acel tronson</span></div>
+              <div className="legend-row"><span className="legend-line" style={{ background: `repeating-linear-gradient(90deg,${EXPLORE_COLOR} 0 3px,transparent 3px 8px)` }} /><span>Violet punctat: parcurs doar lent (explorare, fără culoare de confort)</span></div>
+              <div className="legend-row"><span className="legend-line" style={{ background: 'var(--surface-3)' }} /><span>Fără linie: încă nemăsurat (nu înseamnă neted)</span></div>
               <div className="legend-row"><span className="legend-line" style={{ background: '#e8590c', height: 12, width: 12, borderRadius: 6, marginLeft: 9, marginRight: 9 }} /><span>Posibilă denivelare detectată</span></div>
               <div className="legend-row"><span className="legend-line" style={{ background: '#c2261b', height: 14, width: 14, borderRadius: 4, marginLeft: 8, marginRight: 8 }} /><span>Rapoartele tale (doar pe acest telefon)</span></div>
             </div>
@@ -117,7 +118,7 @@ export function MapScreen({ focus }: { focus?: string }) {
               Date publicate de echipă: {snapshotRideCount(snapshot) ? `actualizate ${snapshot!.meta.generated_at.slice(0, 10)}` : 'încă nicio tură publicată'}.
               {lastLocal > 0 && ` Ultima ta tură: ${new Date(lastLocal).toLocaleDateString('ro-RO')}.`}
             </div>
-            <p className="xs muted">Clasele sunt relative la telefonul, bicicleta și suportul folosite la măsurare. Confortul nu înseamnă siguranță. <a href="#/more/method">Cum măsurăm</a></p>
+            <p className="xs muted">Categorii provizorii, relative la turele echipei (percentilele ferestrelor valide la 9–32 km/h), pentru telefonul, bicicleta și suportul folosite. O stradă se împarte în tronsoane de ~15–40 m doar unde GPS-ul și datele permit. Confortul nu înseamnă siguranță. <a href="#/more/method">Cum măsurăm</a></p>
           </div>
         </Sheet>
       )}
@@ -136,6 +137,7 @@ function EdgeSheet({ e, name, len, osm, version, onClose }: { e: EdgeAgg; name: 
   const manual = useMemo(() => (graph ? reports.filter((r) => distToEdges(graph, [e.edge_id], r.lat, r.lon) <= 20).length : 0), [graph, reports, e.edge_id]);
   const measured = e.status !== 'UNKNOWN' && !!e.class;
   const x = e.explore;
+  const sections = (e.segments ?? []).filter((sg) => sg.cat !== 'none');
   const status = e.status === 'MEASURED' ? { t: 'Măsurat', k: 'comfort' } : e.status === 'LOW_CONFIDENCE' ? { t: 'Încredere redusă', k: 'warn' } : x ? { t: 'Explorat la viteză redusă', k: 'primary' } : { t: 'Nemăsurat', k: '' };
   const accM = e.gps_acc_median ?? x?.acc_p50 ?? null;
   const gps = accM === null ? null : accM <= 6 ? 'bună' : accM <= 10 ? 'medie' : 'slabă';
@@ -144,9 +146,9 @@ function EdgeSheet({ e, name, len, osm, version, onClose }: { e: EdgeAgg; name: 
     <Sheet title={name} onClose={onClose}>
       <div className="stack">
         <div className="row nowrap">
-          {measured && <ClassBadge c={e.class!} />}
+          {measured && e.rough && <span aria-hidden="true" style={{ width: 14, height: 30, borderRadius: 4, background: ROUGH_STYLE[e.rough].color, flex: 'none' }} />}
           <div className="grow">
-            {measured ? <><b>{t.classShort[e.class!]}</b><div className="small muted">{t.classPlain[e.class!]}</div></> : <b>{x ? 'Fără clasă de confort' : 'Fără măsurători valide'}</b>}
+            {measured && e.rough ? <><b>{ROUGH_LABEL[e.rough][0].toUpperCase() + ROUGH_LABEL[e.rough].slice(1)}</b><div className="small muted">mediana segmentului · provizoriu, relativ</div></> : <b>{x ? 'Fără culoare de confort' : 'Fără măsurători valide'}</b>}
           </div>
           <span className={`badge ${status.k}`}>{status.t}</span>
         </div>
@@ -155,6 +157,11 @@ function EdgeSheet({ e, name, len, osm, version, onClose }: { e: EdgeAgg; name: 
         ) : x ? (
           <Banner kind="info">Parcurs doar la viteză mică (~{fmt(x.speed_p50 * 3.6, 0)} km/h). Vibrația la viteză mică nu se compară cu cea la 15–20 km/h, deci nu dăm o clasă și nu influențează rutele. Arătăm valorile ca explorare.</Banner>
         ) : null}
+        {sections.length > 1 && (
+          <div className="small"><b>Pe tronsoane</b> <span className="xs muted">(±GPS, de la un capăt al segmentului)</span>
+            <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>{sections.map((sg, i) => <li key={i}>{Math.round(sg.from_m)}–{Math.round(sg.to_m)} m: {ROUGH_LABEL[sg.cat as keyof typeof ROUGH_LABEL] ?? sg.cat}{sg.status === 'low' ? ' (încredere redusă)' : ''}{sg.n ? ` · ${sg.n} ferestre` : ''}</li>)}</ul>
+          </div>
+        )}
         <dl className="kv">
           <dt>RVI (mediana)</dt><dd>{measured ? fmt(e.rms_median, 2, 'm/s²') : '—'}{x ? ` · explorare: ${fmt(x.rms_p50, 2, 'm/s²')} la ~${fmt(x.speed_p50, 1, 'm/s')}` : ''}</dd>
           <dt>segment</dt><dd>{fmtLen(len)} · {e.surface_kind ?? '—'}</dd>
@@ -170,6 +177,7 @@ function EdgeSheet({ e, name, len, osm, version, onClose }: { e: EdgeAgg; name: 
           <summary>Cum se calculează</summary>
           <p className="small">Telefonul fixat pe ghidon măsoară accelerația verticală de 100 de ori pe secundă. Pe ferestre de 2 s, la 2,5–9 m/s și cu GPS, calculăm RMS-ul vibrației (filtru trece-sus 4 Hz), apoi mediana pe segment. „Măsurat” cere ≥ 3 ferestre, ≥ 2 treceri, GPS ≤ 10 m și nicio ambiguitate cu o cale paralelă. Clasele A–E sunt percentilele 20/40/60/80 ale ferestrelor echipei ({layer.thresholds_source}).</p>
           <dl className="kv">
+            {measured && <><dt>clasa detaliată</dt><dd><ClassBadge c={e.class!} /> {t.classShort[e.class!]}</dd></>}
             <dt>ferestre valide</dt><dd>{e.n_windows} din {e.n_windows_total}</dd>
             {x && <><dt>explorare pe viteze</dt><dd>{x.bands.map((b) => `${b.label}: ${b.n} · ${fmt(b.rms_p50, 2)}`).join('; ')}</dd></>}
             <dt>OSM</dt><dd>{osm}</dd>
@@ -188,7 +196,7 @@ function ZoneSheet({ z, onClose }: { z: ShockZone; onClose: () => void }) {
   return (
     <Sheet title={z.status === 'REPEATED' ? 'Șocuri repetate în această zonă' : 'Posibilă denivelare'} onClose={onClose}>
       <div className="stack">
-        <p className="small">Detectată automat din vibrații în {z.detections} {z.detections === 1 ? 'trecere' : 'treceri'} din {z.passes}. Nu știm ce tip de obstacol este; cercul arată incertitudinea poziției (±{Math.round(z.radius_m)} m).</p>
+        <p className="small">Grup de {z.members.length} {z.members.length === 1 ? 'șoc' : 'șocuri'}{z.n_strong ? ` (${z.n_strong} ${z.n_strong === 1 ? 'puternic' : 'puternice'})` : ''} pe ~{Math.max(5, z.extent_m)} m, detectat automat din vibrații. Treceri cu detectări verificate: {z.detections} din {z.passes}. Nu știm ce tip de obstacol este; cercul arată întinderea și incertitudinea poziției (±{Math.round(z.radius_m)} m).</p>
         {(z.confirmed ?? 0) > 0 && <Banner kind="ok">Ai confirmat această problemă după o tură.</Banner>}
         <div className="row">
           <a className="btn primary sm" href={`#/report/new?lat=${z.lat}&lon=${z.lon}`}>Raportează aici</a>

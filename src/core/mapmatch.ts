@@ -93,6 +93,14 @@ export function assignWindows(windows: VibWindow[], fixes: GpsFix[], m: FixMatch
   }
 }
 
+/** Poziția fiecărei ferestre potrivite de-a lungul muchiei ei (pentru tronsoanele de pe o stradă). */
+export function assignOffsets(windows: VibWindow[], g: Graph): void {
+  for (const w of windows) {
+    if (w.edge < 0 || w.lat === null || w.lon === null) { delete w.off; continue; }
+    w.off = Math.round(g.offsetOnEdge(w.edge, w.lat, w.lon) * 10) / 10;
+  }
+}
+
 /** Trecerile distincte: intrări separate pe muchie la > pass_gap_s distanță */
 export function assignPasses(windows: VibWindow[], gapS: number): void {
   const last = new Map<number, { t: number; pass: number }>();

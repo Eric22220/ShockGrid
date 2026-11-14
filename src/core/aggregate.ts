@@ -3,6 +3,7 @@ import { DEFAULT_CONFIG, DEFAULT_THRESHOLDS, type VibrationConfig } from './conf
 import { haversine } from './geo';
 import { defaultRules, publicKey, publishFilter, rideEnds, type PublishRules } from './publish';
 import { EXPLORE_BANDS, isExploratory } from './quality';
+import { classifyEvent, clusterPoints } from './roughness';
 import { median, medianOrNull, percentileSorted } from './stats';
 import type { ProcessedRide, RideSource, Shock, SurfaceKind } from './types';
 
@@ -18,7 +19,7 @@ export interface RideContribution {
   processing_version: string;
   date: number; // ms, ziua turei (pentru last_seen)
   /** slow = fereastră de explorare la viteză redusă (nu intră în RVI, clase sau rutare) */
-  windows: { edge: number; rms: number; speed: number | null; acc: number | null; valid: boolean; amb: boolean; pass: number; slow?: boolean }[];
+  windows: { edge: number; rms: number; speed: number | null; acc: number | null; valid: boolean; amb: boolean; pass: number; slow?: boolean; off?: number }[];
   shocks: Shock[];
   included_in_layer: boolean;
 }
@@ -39,6 +40,10 @@ export interface SnapshotEdge {
   slow_rms?: number[];
   slow_speed?: number[];
   slow_passes?: number;
+  /** poziția pe muchie (m, rotunjită) a fiecărei ferestre valide / lente și indexul trecerii (fără timpi), pentru tronsoane */
+  off?: number[];
+  pk?: number[];
+  slow_off?: number[];
 }
 
 export interface SnapshotShock {
@@ -88,6 +93,58 @@ export interface EdgeAgg {
   origin: ('public' | 'local')[];
   /** Explorare la viteză redusă (0,5–2,5 m/s): NU e RVI, nu are clasă și nu schimbă statusul sau rutarea. */
   explore: ExploreAgg | null;
+  /** categoria simplă pentru hartă (provizorie, relativă): verde A–B, galben C, roșu D–E */
+  rough: RoughCat | null;
+  /** tronsoane de-a lungul muchiei, cu categoria lor; null = fără poziții pe muchie (ture vechi) */
+  segments: RoughSeg[] | null;
+}
+
+export type RoughCat = 'green' | 'yellow' | 'red';
+export const roughOf = (c: ComfortClass): RoughCat => (c === 'A' || c === 'B' ? 'green' : c === 'C' ? 'yellow' : 'red');
+export const ROUGH_LABEL: Record<RoughCat | 'explore' | 'insufficient', string> = {
+  green: 'vibrații reduse', yellow: 'vibrații moderate', red: 'vibrații accentuate', explore: 'explorat doar lent', insufficient: 'date insuficiente',
+};
+
+/** Tronson al unei muchii (m de la nodul `from`). */
+export interface RoughSeg {
+  from_m: number;
+  to_m: number;
+  cat: RoughCat | 'explore' | 'insufficient' | 'none';
+  n: number;
+  rms_p50: number | null;
+  passes: number;
+  status: 'measured' | 'low' | null;
+}
+
+/** Tronsoanele unei muchii: compartimente de lungime clamp(seg_acc_factor × GPS, seg_min_m, seg_max_m), fiecare cu
+ * categoria medianei RMS a ferestrelor valide (≥ measured_min_windows), apoi compartimentele vecine cu aceeași categorie și
+ * aceeași încredere se unesc. Nu creăm tronsoane mai scurte decât permite GPS-ul. Lentul (explorarea) nu primește culori. */
+export function segmentEdge(len: number, valid: { off: number; rms: number; pk: string }[], slow: { off: number }[], accMed: number | null, th: Thresholds, edgeMeasured: boolean, cfg: VibrationConfig = DEFAULT_CONFIG): RoughSeg[] {
+  const binLen = Math.min(cfg.seg_max_m, Math.max(cfg.seg_min_m, cfg.seg_acc_factor * (accMed ?? 10)));
+  const nb = Math.max(1, Math.floor(len / binLen)); // compartimente cel puțin cât binLen
+  const b = len / nb;
+  const idx = (off: number) => Math.min(nb - 1, Math.max(0, Math.floor(off / b)));
+  const bins = Array.from({ length: nb }, () => ({ rms: [] as number[], pk: new Set<string>(), slow: 0 }));
+  for (const v of valid) { const x = bins[idx(v.off)]; x.rms.push(v.rms); x.pk.add(v.pk); }
+  for (const v of slow) bins[idx(v.off)].slow++;
+  const raw = bins.map((x, i) => {
+    let cat: RoughSeg['cat'];
+    if (x.rms.length >= cfg.measured_min_windows) cat = roughOf(classOf(median(x.rms), th));
+    else if (x.slow >= cfg.measured_min_windows) cat = 'explore';
+    else if (x.rms.length + x.slow > 0) cat = 'insufficient';
+    else cat = 'none';
+    const measured = cat === 'green' || cat === 'yellow' || cat === 'red';
+    const status: RoughSeg['status'] = measured ? (edgeMeasured && x.pk.size >= cfg.measured_min_passes ? 'measured' : 'low') : null;
+    return { from_m: i * b, to_m: (i + 1) * b, cat, rms: x.rms, pk: x.pk, status };
+  });
+  const out: (RoughSeg & { _rms: number[]; _pk: Set<string> })[] = [];
+  for (const r of raw) {
+    const last = out[out.length - 1];
+    if (last && last.cat === r.cat && last.status === r.status) {
+      last.to_m = r.to_m; last._rms.push(...r.rms); r.pk.forEach((k) => last._pk.add(k));
+    } else out.push({ from_m: r.from_m, to_m: r.to_m, cat: r.cat, n: 0, rms_p50: null, passes: 0, status: r.status, _rms: [...r.rms], _pk: new Set(r.pk) });
+  }
+  return out.map(({ _rms, _pk, ...s }) => ({ ...s, from_m: Math.round(s.from_m * 10) / 10, to_m: Math.round(s.to_m * 10) / 10, n: _rms.length, rms_p50: _rms.length ? median(_rms) : null, passes: _pk.size }));
 }
 
 export interface ExploreAgg {
@@ -121,6 +178,9 @@ export interface ShockZone {
   strongest: { peak: number; snippet?: { dt: number; v: number[] }; speed: number | null; double_hit: boolean; date: string; flags: string[] };
   members: string[]; // id-urile detectărilor
   confirmed?: number; // câte detectări au fost confirmate de utilizator (local)
+  n_strong: number;
+  /** întinderea aproximativă a zonei (m), fără incertitudinea GPS */
+  extent_m: number;
 }
 
 export interface ComfortLayer {
@@ -153,7 +213,7 @@ export function toContribution(p: ProcessedRide, included = true): RideContribut
     source: p.meta.source,
     processing_version: p.processing_version,
     date: p.meta.start_ms,
-    windows: p.windows.filter((w) => w.edge >= 0).map((w) => ({ edge: w.edge, rms: w.rms, speed: w.speed, acc: w.acc, valid: w.valid, amb: w.amb, pass: w.pass, slow: isExploratory(w) })),
+    windows: p.windows.filter((w) => w.edge >= 0).map((w) => ({ edge: w.edge, rms: w.rms, speed: w.speed, acc: w.acc, valid: w.valid, amb: w.amb, pass: w.pass, slow: isExploratory(w), off: w.off })),
     shocks: p.shocks.filter((s) => s.located),
     included_in_layer: included,
   };
@@ -171,6 +231,8 @@ export interface AggregateInput {
   confirmed?: Set<string>;
   fixedThresholds?: Thresholds | null;
   version?: number;
+  /** lungimea muchiilor (din graf): fără ea nu se calculează tronsoanele */
+  lengthOf?: (edge: number) => number;
 }
 
 /** Agregare independentă de ordinea turelor: medianele și mulțimile nu depind de ordine. */
@@ -186,11 +248,11 @@ export function aggregate(inp: AggregateInput): ComfortLayer {
   for (const r of inp.rides) if (r.included_in_layer && !inSnap(r.ride_id) && !uniq.has(r.ride_id)) uniq.set(r.ride_id, r);
   const rides = [...uniq.values()].sort((a, b) => (a.ride_id < b.ride_id ? -1 : 1));
 
-  interface Acc { rms: number[]; speed: number[]; acc: number[]; total: number; amb: number; passes: number; rides: number; last: string | null; sources: Set<RideSource>; origin: Set<'public' | 'local'>; slowRms: number[]; slowSpeed: number[]; slowAcc: number[]; slowPasses: number }
+  interface Acc { rms: number[]; speed: number[]; acc: number[]; total: number; amb: number; passes: number; rides: number; last: string | null; sources: Set<RideSource>; origin: Set<'public' | 'local'>; slowRms: number[]; slowSpeed: number[]; slowAcc: number[]; slowPasses: number; segV: { off: number; rms: number; pk: string }[]; segS: { off: number }[] }
   const edges = new Map<number, Acc>();
   const get = (e: number) => {
     let a = edges.get(e);
-    if (!a) { a = { rms: [], speed: [], acc: [], total: 0, amb: 0, passes: 0, rides: 0, last: null, sources: new Set(), origin: new Set(), slowRms: [], slowSpeed: [], slowAcc: [], slowPasses: 0 }; edges.set(e, a); }
+    if (!a) { a = { rms: [], speed: [], acc: [], total: 0, amb: 0, passes: 0, rides: 0, last: null, sources: new Set(), origin: new Set(), slowRms: [], slowSpeed: [], slowAcc: [], slowPasses: 0, segV: [], segS: [] }; edges.set(e, a); }
     return a;
   };
   for (const se of snap?.edges ?? []) {
@@ -201,6 +263,8 @@ export function aggregate(inp: AggregateInput): ComfortLayer {
     se.sources.forEach((s) => a.sources.add(s));
     a.origin.add('public');
     if (se.slow_rms?.length) { a.slowRms.push(...se.slow_rms); a.slowSpeed.push(...(se.slow_speed ?? [])); a.slowPasses += se.slow_passes ?? 0; }
+    if (se.off && se.off.length === se.rms.length) se.off.forEach((o, i) => a.segV.push({ off: o, rms: se.rms[i], pk: `pub:${se.pk?.[i] ?? 0}` }));
+    se.slow_off?.forEach((o) => a.segS.push({ off: o }));
   }
   for (const r of rides) {
     const touched = new Map<number, Set<number>>();
@@ -212,6 +276,7 @@ export function aggregate(inp: AggregateInput): ComfortLayer {
       if (w.amb) a.amb++;
       if (w.slow && w.speed !== null) {
         a.slowRms.push(w.rms); a.slowSpeed.push(w.speed);
+        if (w.off !== undefined) a.segS.push({ off: w.off });
         if (w.acc !== null) a.slowAcc.push(w.acc);
         let s = slowTouched.get(w.edge);
         if (!s) { s = new Set(); slowTouched.set(w.edge, s); }
@@ -219,6 +284,7 @@ export function aggregate(inp: AggregateInput): ComfortLayer {
       }
       if (!w.valid) continue;
       a.rms.push(w.rms);
+      if (w.off !== undefined) a.segV.push({ off: w.off, rms: w.rms, pk: `${r.ride_id}:${w.pass}` });
       if (w.speed !== null) a.speed.push(w.speed);
       if (w.acc !== null) a.acc.push(w.acc);
       let s = touched.get(w.edge);
@@ -291,11 +357,15 @@ export function aggregate(inp: AggregateInput): ComfortLayer {
       speed_p90: a.speed.length ? percentileSorted([...a.speed].sort((x, y) => x - y), 90) : null,
       origin: [...a.origin].sort(),
       explore: exploreOf(a.slowRms, a.slowSpeed, a.slowAcc, a.slowPasses),
+      rough: rmsMed !== null ? roughOf(classOf(rmsMed, thresholds)) : null,
+      segments: a.segV.length + a.segS.length > 0 && inp.lengthOf
+        ? segmentEdge(inp.lengthOf(e), a.segV, a.segS, accMed ?? medianOrNull(a.slowAcc), thresholds, status === 'MEASURED', cfg)
+        : null,
     });
   }
 
-  const zones = aggregateShocks(snap, rides, out, inp.surfaceKindOf, inp.rejected ?? new Set());
   const conf = inp.confirmed ?? new Set<string>();
+  const zones = aggregateShocks(snap, rides, out, inp.surfaceKindOf, inp.rejected ?? new Set(), conf, cfg);
   for (const z of zones) z.confirmed = z.members.filter((m) => conf.has(m)).length;
   return {
     version: inp.version ?? 0,
@@ -322,34 +392,36 @@ function exploreOf(rms: number[], speed: number[], acc: number[], passes: number
   return { n: rms.length, rms_p50: percentileSorted(sorted, 50), rms_p90: percentileSorted(sorted, 90), speed_p50: median(speed), acc_p50: medianOrNull(acc), passes, bands };
 }
 
-interface Det { id: string; lat: number; lon: number; r: number; peak: number; double_hit: boolean; speed: number | null; edge: number; needs_review: boolean; pass_key: string; snippet?: { dt: number; v: number[] }; date: string; flags: string[] }
+function extentOf(m: { lat: number; lon: number }[]) {
+  let e = 0;
+  for (let i = 0; i < m.length; i++) for (let j = i + 1; j < m.length; j++) e = Math.max(e, haversine(m[i].lat, m[i].lon, m[j].lat, m[j].lon));
+  return e;
+}
 
-function aggregateShocks(snap: Snapshot | null, rides: RideContribution[], edges: Map<number, EdgeAgg>, kindOf: AggregateInput['surfaceKindOf'], rejected: Set<string>): ShockZone[] {
+interface Det { id: string; lat: number; lon: number; r: number; peak: number; z: number; double_hit: boolean; speed: number | null; edge: number; needs_review: boolean; pass_key: string; snippet?: { dt: number; v: number[] }; date: string; flags: string[] }
+
+function aggregateShocks(snap: Snapshot | null, rides: RideContribution[], edges: Map<number, EdgeAgg>, kindOf: AggregateInput['surfaceKindOf'], rejected: Set<string>, confirmed: Set<string>, cfg: VibrationConfig): ShockZone[] {
   const dets: Det[] = [];
   (snap?.shocks ?? []).forEach((s, i) => dets.push({ id: `snap${i}`, ...s, flags: s.needs_review ? ['snapshot'] : [] }));
   for (const r of rides)
     for (const s of r.shocks) {
       if (s.lat === null || s.lon === null) continue;
+      // manevrarea telefonului (rotație mare sau orientare schimbată) nu formează zone; rămâne în diagnosticul turei
+      if (classifyEvent(s, null, cfg).kind === 'handling') continue;
       dets.push({
-        id: `${r.ride_id}:${s.id}`, lat: s.lat, lon: s.lon, r: s.r ?? 10, peak: s.peak, double_hit: s.double_hit, speed: s.speed,
+        id: `${r.ride_id}:${s.id}`, lat: s.lat, lon: s.lon, r: s.r ?? 10, peak: s.peak, z: s.z, double_hit: s.double_hit, speed: s.speed,
         edge: s.edge, needs_review: s.needs_review, pass_key: `${r.ride_id}:${s.edge}:${s.pass}`, snippet: s.snippet, date: day(s.t), flags: s.flags,
       });
     }
   // ordine deterministă: vârful descrescător, apoi id
   dets.sort((a, b) => b.peak - a.peak || (a.id < b.id ? -1 : 1));
-  const zones: { members: Det[]; lat: number; lon: number; r: number }[] = [];
-  for (const d of dets) {
-    let joined = false;
-    for (const z of zones) {
-      const dist = haversine(z.lat, z.lon, d.lat, d.lon);
-      if (dist <= Math.max(8, Math.sqrt(z.r ** 2 + d.r ** 2))) {
-        z.members.push(d);
-        joined = true;
-        break;
-      }
-    }
-    if (!joined) zones.push({ members: [d], lat: d.lat, lon: d.lon, r: d.r });
-  }
+  // aceeași grupare ca în analiza turei: legături între detectări la ≤ max(zone_link_min_m, √(r1² + r2²))
+  const cid = clusterPoints(dets, cfg.zone_link_min_m);
+  const groups = new Map<number, Det[]>();
+  dets.forEach((d, i) => { const g = groups.get(cid[i]) ?? []; g.push(d); groups.set(cid[i], g); });
+  const strongOf = (d: Det) => d.z >= cfg.shock_strong_factor * cfg.shock_z && d.peak >= cfg.shock_strong_factor * cfg.shock_abs;
+  // o detectare slabă, singură și neconfirmată nu e o zonă pe hartă (rămâne neverificată în diagnosticul turei)
+  const zones = [...groups.values()].filter((m) => m.length >= 2 || m.some(strongOf) || m.some((d) => confirmed.has(d.id))).map((members) => ({ members }));
   return zones.map((z) => {
     const m = z.members;
     const reviewed = m.filter((d) => !d.needs_review && !rejected.has(d.id));
@@ -368,7 +440,7 @@ function aggregateShocks(snap: Snapshot | null, rides: RideContribution[], edges
     return {
       id: `z${Math.round(lat * 1e5)}_${Math.round(lon * 1e5)}`,
       lat, lon,
-      radius_m: Math.max(...m.map((d) => d.r)),
+      radius_m: Math.round((extentOf(m) / 2 + median(m.map((d) => d.r))) * 10) / 10,
       status,
       passes,
       detections,
@@ -381,6 +453,8 @@ function aggregateShocks(snap: Snapshot | null, rides: RideContribution[], edges
       surface_kind: edgeId >= 0 ? kindOf?.(edgeId) ?? null : null,
       strongest: { peak: strongest.peak, snippet: strongest.snippet, speed: strongest.speed, double_hit: strongest.double_hit, date: strongest.date, flags: strongest.flags },
       members: m.map((d) => d.id),
+      n_strong: m.filter(strongOf).length,
+      extent_m: Math.round(extentOf(m)),
     };
   });
 }
@@ -456,7 +530,7 @@ export function buildSnapshot(rides: ProcessedRide[], cfg: VibrationConfig, devi
   const edges = new Map<number, SnapshotEdge>();
   const shocks: SnapshotShock[] = [];
   const shockMode = opts.shocks ?? 'clean';
-  for (const p of rides) {
+  for (const [rideIdx, p] of rides.entries()) {
     const keep = publishFilter(p, cfg, opts.rules);
     const key = publicKey(p.ride_id);
     const passesByEdge = new Map<number, Set<number>>();
@@ -474,12 +548,16 @@ export function buildSnapshot(rides: ProcessedRide[], cfg: VibrationConfig, devi
       if (opts.exploratory && isExploratory(w, cfg)) {
         (e.slow_rms ??= []).push(Math.round(w.rms * 1000) / 1000);
         (e.slow_speed ??= []).push(Math.round(w.speed! * 100) / 100);
+        if (w.off !== undefined) (e.slow_off ??= []).push(Math.round(w.off));
         let s = slowByEdge.get(w.edge);
         if (!s) { s = new Set(); slowByEdge.set(w.edge, s); }
         s.add(w.pass);
       }
       if (!w.valid) continue;
       e.rms.push(Math.round(w.rms * 1000) / 1000);
+      // poziția pe muchie și trecerea (index local, fără timp): pentru tronsoane; doar dacă toate ferestrele o au
+      (e.off ??= []).push(w.off !== undefined ? Math.round(w.off) : -1);
+      (e.pk ??= []).push(rideIdx * 1000 + Math.max(0, w.pass));
       if (w.speed !== null) e.speed.push(Math.round(w.speed * 100) / 100);
       if (w.acc !== null) e.acc.push(Math.round(w.acc * 10) / 10);
       let s = passesByEdge.get(w.edge);
@@ -515,6 +593,7 @@ export function buildSnapshot(rides: ProcessedRide[], cfg: VibrationConfig, devi
       });
     }
   }
+  for (const e of edges.values()) if (e.off?.some((o) => o < 0)) { delete e.off; delete e.pk; }
   const radius = (opts.rules ?? defaultRules(cfg)).radius_m;
   if (opts.geometry && radius > 0) {
     const ends = rides.flatMap(rideEnds);

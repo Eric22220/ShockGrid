@@ -21,6 +21,7 @@ const SURF: Record<string, string> = { carosabil: 'carosabil', pista: 'pistă de
 
 export function StreetPage({ id, name }: { id?: string; name?: string | null }) {
   const ride = useApp((s) => s.rides.find((r) => r.ride_id === id));
+  const loaded = useApp((s) => s.ready);
   const graph = useApp((s) => s.graph);
   const reports = useApp((s) => s.reports);
   const reviews = useApp((s) => s.reviews);
@@ -71,7 +72,7 @@ export function StreetPage({ id, name }: { id?: string; name?: string | null }) 
     if (bounds.isValid()) map!.fitBounds(bounds, { padding: [24, 24], maxZoom: 18, animate: false });
   }, [p, graph, street, data, selShock]);
 
-  if (!ride || !p) return <main className="screen"><div className="wrap"><Header title="Analiză pe stradă" back="#/rides" /><p>Tura nu există pe acest telefon.</p></div></main>;
+  if (!ride || !p) return <main className="screen"><div className="wrap"><Header title="Analiză pe stradă" back="#/rides" /><p>{loaded ? 'Tura nu există pe acest telefon.' : 'Se încarcă…'}</p></div></main>;
   if (!graph) return <main className="screen"><div className="wrap"><Header title="Analiză pe stradă" back={`#/ride/${ride.ride_id}`} /><p>Se încarcă străzile…</p></div></main>;
   const intervals = ride.intervals ?? [];
 

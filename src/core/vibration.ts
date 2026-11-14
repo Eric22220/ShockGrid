@@ -136,6 +136,27 @@ function gyroMaxIn(g: GyroData | null, t0: number, t1: number, cursor: { j: numb
   return Number.isFinite(m) ? m : null;
 }
 
+/** Schimbarea orientării telefonului în jurul unui vârf: unghiul dintre accelerația medie (≈ gravitația în
+ * sistemul telefonului) pe [t−3 s, t−1 s] și pe [t+1 s, t+3 s]. Un șoc al drumului lasă orientarea neschimbată;
+ * un telefon mutat în suport sau luat în mână o schimbă. null fără gravitație sau fără date. */
+export function tiltAround(raw: RawRide, tc: number): number | null {
+  const m = raw.motion;
+  if (!m.withGravity || m.t.length < 2) return null;
+  const mean = (a: number, b: number) => {
+    let lo = 0, hi = m.t.length;
+    while (lo < hi) { const k = (lo + hi) >> 1; if (m.t[k] < a) lo = k + 1; else hi = k; }
+    let sx = 0, sy = 0, sz = 0, n = 0;
+    for (let j = lo; j < m.t.length && m.t[j] <= b; j++) { sx += m.x[j]; sy += m.y[j]; sz += m.z[j]; n++; }
+    return n >= 10 ? [sx / n, sy / n, sz / n] : null;
+  };
+  const u = mean(tc - 3000, tc - 1000), v = mean(tc + 1000, tc + 3000);
+  if (!u || !v) return null;
+  const nu = Math.hypot(u[0], u[1], u[2]), nv = Math.hypot(v[0], v[1], v[2]);
+  if (nu < 1 || nv < 1) return null;
+  const c = Math.max(-1, Math.min(1, (u[0] * v[0] + u[1] * v[1] + u[2] * v[2]) / (nu * nv)));
+  return Math.round(((Math.acos(c) * 180) / Math.PI) * 10) / 10;
+}
+
 function gyroMaxAround(g: GyroData | null, t0: number, t1: number): number | null {
   if (!g) return null;
   let lo = 0, hi = g.t.length;
@@ -306,6 +327,7 @@ export function detectShocks(raw: RawRide, sig: Signal, cfg: VibrationConfig, tr
     if (speed === null) flags.push('speed_unknown');
     else if (speed < cfg.speed_min || speed > cfg.speed_max) flags.push('speed_band');
     const gm = gyroMaxAround(raw.gyro, main.tPeak - 500, main.tPeak + 500);
+    const tilt = tiltAround(raw, main.tPeak);
     if (gm !== null && gm > cfg.gyro_max) flags.push('gyro');
     if (sig.mountShifts.some((m) => Math.abs(m - main.tPeak) <= 1000)) flags.push('mount_shift');
     if (sig.gaps.some(([a, b]) => a < main.tPeak + 1000 && b > main.tPeak - 1000)) flags.push('gap');
@@ -341,6 +363,8 @@ export function detectShocks(raw: RawRide, sig: Signal, cfg: VibrationConfig, tr
       edge: -1,
       pass: -1,
       snippet: { dt: binMs, v: vals },
+      gyro_max: gm,
+      tilt,
     });
     g = null;
   };

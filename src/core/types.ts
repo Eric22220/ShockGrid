@@ -100,6 +100,8 @@ export interface VibWindow {
   edge: number; // -1 = nepotrivită
   amb: boolean; // ambiguitate carosabil/trotuar/pistă
   pass: number; // indexul trecerii pe muchie, în cadrul turei (-1 dacă nu are muchie)
+  /** poziția pe muchie (m de la nodul `from`), dacă e potrivită; lipsește la turele potrivite înainte de sg-1.2.0 */
+  off?: number;
 }
 
 export type ShockFlag = 'speed_unknown' | 'speed_band' | 'gyro' | 'mount_shift' | 'gap';
@@ -121,6 +123,12 @@ export interface Shock {
   pass: number;
   /** ±3 s din semnalul filtrat, subeșantionat */
   snippet: { dt: number; v: number[] };
+  /** viteza unghiulară maximă ±0,5 s în jurul vârfului (°/s); null = fără giroscop. Lipsește la turele procesate înainte de sg-1.2.0. */
+  gyro_max?: number | null;
+  /** schimbarea orientării telefonului (°) între mediile accelerației 1–3 s înainte și 1–3 s după vârf: telefon mutat sau manevrat */
+  tilt?: number | null;
+  /** distanța cumulată pe traseu la vârf (m) */
+  dist?: number;
 }
 
 export interface RideSummary {

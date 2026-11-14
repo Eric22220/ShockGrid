@@ -7,6 +7,7 @@ import {
 import { DEFAULT_CONFIG, type VibrationConfig } from '../core/config';
 import { Graph, type GraphJson } from '../core/graph';
 import { ImportError } from '../core/io';
+import { assignOffsets } from '../core/mapmatch';
 import { matchProcessed } from '../core/process';
 import {
   DEFAULT_ROUTE_OPTIONS, PROFILES, Router, mainComponent, routeStats,
@@ -130,6 +131,7 @@ function buildLayer(rides: idb.StoredRide[], version: number, s: AppState = stat
     confirmed: new Set(Object.entries(s.reviews).filter(([, r]) => r.answer === 'yes').map(([k]) => k)),
     fixedThresholds: s.settings.fixedThresholds,
     version,
+    lengthOf: g ? (e) => g.length[e] : undefined,
   });
 }
 
@@ -179,6 +181,15 @@ export async function init() {
   // turele procesate fără graf se potrivesc acum pe hartă
   if (state.graph) {
     let changed = false;
+    for (const r of state.rides) {
+      // ture potrivite înainte de sg-1.2.0: poziția ferestrelor pe muchie (pentru tronsoane), fără reprocesare
+      if (r.processed.match.graph_available && r.processed.windows.some((w) => w.edge >= 0 && w.off === undefined)) {
+        assignOffsets(r.processed.windows, state.graph);
+        const full = await idb.getRide(r.ride_id);
+        if (full) await idb.putRide({ ...full, processed: r.processed });
+        changed = true;
+      }
+    }
     for (const r of state.rides)
       if (!r.processed.match.graph_available) {
         matchProcessed(r.processed, state.graph, state.settings.cfg);
@@ -393,6 +404,36 @@ export async function reviewShock(rideId: string, shock: Shock, answer: ReviewAn
   await idb.kvSet('shock-reviews', reviews).catch(() => {});
   const rej = new Set(state.rejected);
   if (answer === 'no') rej.add(key); else rej.delete(key);
+  set({ rejected: [...rej] });
+  await idb.kvSet('rejected', [...rej]).catch(() => {});
+  recompute();
+}
+
+/** Răspunsul pentru o ZONĂ: se aplică tuturor evenimentelor din zonă. Da → un singur raport local, în centrul zonei
+ * (raza = incertitudinea zonei); Nu → toate detectările zonei sunt respinse; Nu sunt sigur → rămân neverificate. */
+export async function reviewZone(rideId: string, zone: { lat: number; lon: number; radius_m: number; members: Shock[]; strongest: Shock }, answer: ReviewAnswer, type?: idb.ReportType) {
+  const keys = zone.members.map((m) => shockKey(rideId, m.id));
+  let report_id = keys.map((k) => state.reviews[k]?.report_id).find((x): x is string => !!x);
+  if (answer === 'yes') {
+    const existing = report_id ? state.reports.find((r) => r.id === report_id) : undefined;
+    const rep = existing
+      ? { ...existing, type: type ?? existing.type, status: 'local' as const, updated_at: Date.now() }
+      : createReport({ lat: zone.lat, lon: zone.lon, acc: Math.round(zone.radius_m), type: type ?? 'nespecificat', source: 'shock', shock_ref: shockKey(rideId, zone.strongest.id), now: zone.strongest.t });
+    if (rep.type === 'nespecificat') rep.status = 'draft';
+    await saveReport(rep);
+    report_id = rep.id;
+  } else if (report_id) {
+    await idb.deleteReport(report_id);
+    set({ reports: state.reports.filter((x) => x.id !== report_id) });
+    report_id = undefined;
+  }
+  const at = Date.now();
+  const reviews = { ...state.reviews };
+  for (const k of keys) reviews[k] = { answer, type: answer === 'yes' ? type : undefined, report_id, at };
+  set({ reviews });
+  await idb.kvSet('shock-reviews', reviews).catch(() => {});
+  const rej = new Set(state.rejected);
+  for (const k of keys) { if (answer === 'no') rej.add(k); else rej.delete(k); }
   set({ rejected: [...rej] });
   await idb.kvSet('rejected', [...rej]).catch(() => {});
   recompute();

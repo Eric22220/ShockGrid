@@ -27,7 +27,7 @@ Nu spunem „am inventat detectarea gropilor” și nici „colorăm străzile�
 >
 > ShockGrid măsoară asta. Telefonul fixat pe ghidon înregistrează vibrațiile de o sută de ori pe secundă, împreună cu GPS-ul. Le transformăm într-un indice pe fiecare segment de stradă, cu numărul de treceri, viteza și precizia GPS. Unde n-am măsurat, scrie „necunoscut”, nu verde.
 >
-> Am ieșit pe teren: 41 de minute reale pe bicicletă, aproape 250.000 de măsurători. Aplicația ne-a spus singură că o bună parte din tură a fost prea lentă pentru un indice de confort și a exclus-o, pentru că la 4 km/h vibrația nu se compară cu cea de la 15. Pe Strada Ioan Vidu, unde am observat trotuare cu gropi și denivelări, vibrația a fost totuși de circa 1,2–1,3 ori mai mare decât în restul turei, la aceeași viteză, și am găsit zeci de șocuri candidate pe care le verificăm cu filmarea. GPS-ul nu poate spune pe ce trotuar eram, așa că nu pretindem asta.
+> Am ieșit pe teren: 41 de minute reale pe bicicletă, aproape 250.000 de măsurători. Accelerometrul a produs 184 de vârfuri; aplicația a recunoscut 12 ca manevrarea telefonului, a grupat restul în 36 de zone și ne-a cerut să verificăm doar 22, cele observate în treceri separate sau cu un șoc puternic. Aplicația ne-a spus singură că o bună parte din tură a fost prea lentă pentru un indice de confort și a exclus-o, pentru că la 4 km/h vibrația nu se compară cu cea de la 15. Pe Strada Ioan Vidu, unde am observat trotuare cu gropi și denivelări, vibrația a fost totuși de circa 1,2–1,3 ori mai mare decât în restul turei, la aceeași viteză, și am găsit zeci de șocuri candidate pe care le verificăm cu filmarea. GPS-ul nu poate spune pe ce trotuar eram, așa că nu pretindem asta.
 >
 > Când alegi o rută, ShockGrid îți spune cât e mai lungă alternativa, cât din fiecare rută e măsurat și câți metri denivelați eviți. Dacă nu avem date, nu recomandăm nimic.
 >
@@ -50,7 +50,7 @@ Nu afirmăm reducerea accidentelor și nici măsurarea traficului.
 ## Scenariul A: datele reale trec de filtre
 1. 10 s de filmare cu bicicleta și suportul.
 2. Telefonul A (are tura importată): **Ture → tura → Calitatea datelor**: 41 min, 100 Hz, 70 de ferestre RVI valide, restul exclus pentru viteză mică, cu motivele.
-3. **Analiză pe stradă → Strada Ion Vidu**: harta cu vibrația relativă și șocurile candidate; tabelul „strada față de restul turei” pe benzi de viteză; banner-ul „Latura nu se poate stabili din GPS”.
+3. **Zone de verificat**: „184 de evenimente → 36 de zone → 22 de verificat”; zonele de pe Ion Vidu au prioritate mare (atinse în ambele treceri) → Vezi dovezile (+mm:ss) → Confirmă / Nu e o problemă. Apoi **Analiză pe stradă → Strada Ion Vidu**: harta cu vibrația relativă și șocurile candidate; tabelul „strada față de restul turei” pe benzi de viteză; banner-ul „Latura nu se poate stabili din GPS”.
 4. Un șoc puternic → ora +mm:ss → același moment în filmare (dacă există) → **Verifică șocul selectat** → Da + „Trecere denivelată” sau Nu.
 5. **Hartă**: fișa unui segment (Măsurat / Încredere redusă / Explorat), cu treceri, viteză, GPS și sursă.
 6. **Traseu A→B**: verdictul onest. Cu datele de azi, de obicei „Confort necunoscut”.

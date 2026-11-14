@@ -1,9 +1,11 @@
-import { BarChart3, Map as MapIcon, Share2, Trash2, TriangleAlert } from 'lucide-react';
-import { useMemo } from 'react';
+import { BarChart3, ListFilter, Map as MapIcon, Share2, Trash2, TriangleAlert } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { DEFAULT_CONFIG } from '../../core/config';
+import { rideRoughness } from '../../core/roughness';
 import { CLASSES, classOf } from '../../core/aggregate';
 import type { DeclaredSurface } from '../../core/types';
 import { t } from '../../i18n/ro';
-import { getRideFile, removeRide, setDeclaredSurface, setIncluded, setRideFields, useApp } from '../../state/store';
+import { getRideFile, removeRide, reprocessRide, setDeclaredSurface, setIncluded, setRideFields, useApp } from '../../state/store';
 import { RideMiniMap } from '../components/RideMiniMap';
 import { RideQualityCard } from '../components/RideQualityCard';
 import { RideSummaryCard } from '../components/RideSummaryCard';
@@ -13,23 +15,28 @@ import { go } from '../App';
 
 export function RideDetail({ id }: { id?: string }) {
   const r = useApp((s) => s.rides.find((x) => x.ride_id === id));
+  const loaded = useApp((s) => s.ready);
   const th = useApp((s) => s.layer.thresholds);
   const thSrc = useApp((s) => s.layer.thresholds_source);
   // praguri calculate doar din această tură: împărțirea ar fi 20% pe clasă prin construcție, deci nu e informativă
   const selfCalibrated = useApp((s) => s.layer.thresholds_source.startsWith('percentilele') && s.layer.ride_ids.length <= 1);
   const reviews = useApp((s) => s.reviews);
   const lastImport = useApp((s) => s.lastImport);
+  const graph = useApp((s) => s.graph);
+  const rough = useMemo(() => (r ? rideRoughness(r.processed, DEFAULT_CONFIG, graph) : null), [r, graph]);
+  const [busy, setBusy] = useState(false);
   const dist = useMemo(() => {
     const c = { A: 0, B: 0, C: 0, D: 0, E: 0 };
     if (r) for (const w of r.processed.windows) if (w.valid) c[classOf(w.rms, th)]++;
     return c;
   }, [r, th]);
-  if (!r) return <main className="screen"><div className="wrap"><Header title="Tură" back="#/rides" /><p>Tura nu există pe acest telefon.</p></div></main>;
+  if (!r) return <main className="screen"><div className="wrap"><Header title="Tură" back="#/rides" /><p>{loaded ? 'Tura nu există pe acest telefon.' : 'Se încarcă…'}</p></div></main>;
   const p = r.processed;
   const s = p.summary;
   const valid = Object.values(dist).reduce((a, b) => a + b, 0);
-  const cands = p.shocks.filter((x) => x.located);
-  const unreviewed = cands.filter((x) => !reviews[`${r.ride_id}:${x.id}`]).length;
+  const rr = rough;
+  const toReview = rr ? rr.zones.filter((z) => z.priority !== 'low') : [];
+  const unreviewed = toReview.filter((z) => !reviews[`${r.ride_id}:${z.strongest.id}`]).length;
   return (
     <main className="screen"><div className="wrap stack">
       <Header title={p.meta.label || r.file_name.replace(/\.zip$/i, '')} back="#/rides" />
@@ -47,10 +54,13 @@ export function RideDetail({ id }: { id?: string }) {
           {lastImport.route.status !== 'none' && <> {lastImport.route.text}</>}
         </Banner>
       )}
-      {cands.length > 0 && (
+      {p.processing_version !== DEFAULT_CONFIG.processing_version && (
+        <Banner kind="info"><span>Tura a fost procesată cu {p.processing_version}; versiunea curentă ({DEFAULT_CONFIG.processing_version}) separă manevrarea telefonului de șocurile drumului. <button className="btn sm" disabled={busy} onClick={async () => { setBusy(true); try { await reprocessRide(r.ride_id); toast('Tura a fost reprocesată.'); } catch (e) { toast((e as Error).message); } finally { setBusy(false); } }}>{busy ? 'Se reprocesează…' : 'Reprocesează'}</button></span></Banner>
+      )}
+      {rr && rr.counts.raw > 0 && (
         <a className={`card ${unreviewed ? 'tint-warn' : ''}`} href={`#/review/${r.ride_id}`} style={{ display: 'flex', gap: 12, alignItems: 'center', textDecoration: 'none', color: 'inherit' }}>
           <TriangleAlert style={{ color: 'var(--warn)', flex: 'none' }} />
-          <div className="grow"><b>{cands.length} {cands.length === 1 ? 'posibilă denivelare' : 'posibile denivelări'}</b><div className="small muted">{unreviewed ? `${unreviewed} de verificat` : 'toate verificate'}</div></div>
+          <div className="grow"><b>{rr.counts.zones ? `${rr.counts.zones} ${rr.counts.zones === 1 ? 'zonă' : 'zone'} cu șocuri grupate` : 'Niciun grup de șocuri'}</b><div className="small muted">{toReview.length ? `${toReview.length} de verificat${unreviewed < toReview.length ? ` · ${toReview.length - unreviewed} verificate` : ''}` : 'nimic prioritar de verificat'} · din {rr.counts.raw} evenimente brute</div></div>
           <span className="btn sm primary">{unreviewed ? 'Verifică' : 'Revezi'}</span>
         </a>
       )}
@@ -93,6 +103,7 @@ export function RideDetail({ id }: { id?: string }) {
         <summary>Analiză tehnică</summary>
         <div className="stack">
           <a className="btn block" href={`#/ride/${r.ride_id}/replay`}><BarChart3 /> Grafic vibrații (replay)</a>
+          <a className="btn block" href={`#/ride/${r.ride_id}/events`}><ListFilter /> Evenimente brute ({p.shocks.length}) · diagnostic</a>
           <RideSummaryCard p={p} />
         </div>
       </details>

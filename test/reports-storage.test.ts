@@ -96,7 +96,8 @@ describe('confirmarea / respingerea unei denivelări după tură', () => {
     expect((await idb.kvGet<Record<string, unknown>>('shock-reviews'))![shockKey('rideA', 's1')]).toMatchObject({ answer: 'no' });
   });
   it('agregarea: respins → REJECTED; confirmat → numărat; costul rutei nu se schimbă (șocurile nu intră în cost)', () => {
-    const c: RideContribution = { ride_id: 'rideA', source: 'shockgrid', processing_version: 'x', date: 0, windows: [], shocks: [shock('s1', 45.75, 21.22)], included_in_layer: true };
+    // șoc puternic (z ≥ 12 și vârf ≥ 8 m/s²): o singură detectare formează o zonă
+    const c: RideContribution = { ride_id: 'rideA', source: 'shockgrid', processing_version: 'x', date: 0, windows: [], shocks: [{ ...shock('s1', 45.75, 21.22), z: 13 }], included_in_layer: true };
     const base = aggregate({ rides: [c] });
     expect(base.zones[0].status).toBe('CANDIDATE');
     const conf = aggregate({ rides: [c], confirmed: new Set([shockKey('rideA', 's1')]) });
@@ -105,5 +106,10 @@ describe('confirmarea / respingerea unei denivelări după tură', () => {
     expect([...conf.edges.entries()]).toEqual([...base.edges.entries()]);
     const rej = aggregate({ rides: [c], rejected: new Set([shockKey('rideA', 's1')]) });
     expect(rej.zones[0].status).toBe('REJECTED');
+  });
+  it('o detectare slabă, singură, nu e zonă pe hartă până nu e confirmată', () => {
+    const c: RideContribution = { ride_id: 'rideA', source: 'shockgrid', processing_version: 'x', date: 0, windows: [], shocks: [shock('s1', 45.75, 21.22)], included_in_layer: true };
+    expect(aggregate({ rides: [c] }).zones).toHaveLength(0);
+    expect(aggregate({ rides: [c], confirmed: new Set([shockKey('rideA', 's1')]) }).zones).toHaveLength(1);
   });
 });

@@ -1,7 +1,7 @@
 // SIMULARE: cum răspunde motorul de rutare la diferențe de confort CUNOSCUTE, pe străzile reale, cu un strat inventat.
 // Stratul simulat trăiește doar în memorie, are propriul Router (cache separat) și nu atinge niciodată turele,
 // stratul public sau IndexedDB. Nu e o măsurătoare și nu se afișează fără eticheta „SIMULARE”.
-import { aggregate, classOf, type ComfortLayer, type EdgeAgg } from './aggregate';
+import { aggregate, classOf, roughOf, type ComfortLayer, type EdgeAgg } from './aggregate';
 import { DEFAULT_THRESHOLDS } from './config';
 import type { Graph } from './graph';
 import { DEFAULT_ROUTE_OPTIONS, Router, type RouteResult } from './route';
@@ -14,7 +14,7 @@ function simEdge(g: Graph, e: number, rms: number): EdgeAgg {
   return {
     edge_id: e, rms_median: rms, class: classOf(rms, DEFAULT_THRESHOLDS), n_windows: 6, n_windows_total: 6, n_passes: 2, n_rides: 2,
     speed_median: 4.5, gps_acc_median: 5, status: 'MEASURED', reasons: [], surface_kind: g.kind[e] ?? null, ambiguous_ratio: 0,
-    last_seen: null, sources: [], speed_p10: 4, speed_p90: 5, origin: [], explore: null,
+    last_seen: null, sources: [], speed_p10: 4, speed_p90: 5, origin: [], explore: null, rough: roughOf(classOf(rms, DEFAULT_THRESHOLDS)), segments: null,
   };
 }
 

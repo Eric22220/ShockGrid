@@ -54,7 +54,7 @@ for (const [i, r] of rides.entries()) {
 }
 
 say('\n## Ce se vede public');
-const layer = aggregate({ snapshot: snap, rides: [], surfaceKindOf: (e) => graph.kind[e] ?? null, version: 1 });
+const layer = aggregate({ snapshot: snap, rides: [], surfaceKindOf: (e) => graph.kind[e] ?? null, version: 1, lengthOf: (e) => graph.length[e] });
 const by: Record<string, { n: number; m: number }> = {};
 for (const e of layer.edges.values()) {
   const k = e.status === 'UNKNOWN' ? (e.explore ? 'EXPLORAT' : 'UNKNOWN') : e.status;
@@ -62,6 +62,10 @@ for (const e of layer.edges.values()) {
   by[k].n++; by[k].m += graph.length[e.edge_id];
 }
 for (const [k, v] of Object.entries(by)) say(`- ${k}: ${v.n} segmente, ${Math.round(v.m)} m`);
+const secs: Record<string, number> = {};
+for (const e of layer.edges.values()) for (const sg of e.segments ?? []) if (sg.cat !== 'none') secs[`${sg.cat}${sg.status ? '/' + sg.status : ''}`] = (secs[`${sg.cat}${sg.status ? '/' + sg.status : ''}`] ?? 0) + (sg.to_m - sg.from_m);
+say(`- tronsoane pe hartă (m): ${Object.entries(secs).map(([k, v]) => `${k} ${Math.round(v)}`).join(', ') || 'niciunul'}`);
+say(`- zone cu șocuri: ${layer.zones.length} (${Object.entries(layer.zones.reduce((a: Record<string, number>, z) => ((a[z.status] = (a[z.status] ?? 0) + 1), a), {})).map(([k, v]) => `${k} ${v}`).join(', ') || '—'})`);
 const streets = new Map<string, number>();
 for (const e of snap.edges) { const n = graph.name[e.edge_id] || '(fără nume)'; streets.set(n, (streets.get(n) ?? 0) + graph.length[e.edge_id]); }
 say(`- străzi: ${[...streets.entries()].sort((a, b) => b[1] - a[1]).map(([n, m]) => `${n} (${Math.round(m)} m)`).join(', ')}`);

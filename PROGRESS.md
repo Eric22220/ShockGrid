@@ -15,6 +15,28 @@ Fișier de reluare: ce merge, ce a fost verificat și cum, ce nu merge. Cel mai 
 - **Zona cu șoc — „treceri”:** numărul de treceri al zonei = trecerile muchiei pe care stă (din agregarea RVI), minim numărul de detectări. Nu publicăm trasee, deci nu putem număra trecerile prin rază din snapshot.
 - **Ghidul Primăriei:** nu contrazice specificația. Notat: „treat gaps as unknown”, „Romanian first”, WCAG 2.1 AA, „private by default”, Sesizări ca unic canal pentru probleme (nu trimitem sesizări, doar link), `/api/zones` e BROWSER OK (opțional, neimplementat încă).
 
+## Tronsoane și zone în loc de 184 de verificări (14.11.2026, noaptea)
+Checkpoint: tag `checkpoint-before-roughness-segmentation` (commit eb00efd). `processing_version` = `sg-1.2.0` (detecția neschimbată; evenimentele primesc rotația ±0,5 s, schimbarea orientării și distanța pe traseu; ferestrele primesc poziția pe muchie).
+
+**Tura reală (privată), cu pragurile existente, fără ajustări pe ea**
+- 184 de evenimente brute → 12 manevrarea telefonului (rotație > 300 °/s sau orientare schimbată > 15°), 0 cu bicicleta oprită (deja excluse la detecție), 13 slabe izolate (rămân în diagnostic), **159 grupate în 36 de zone**: 10 cu prioritate mare (evenimente în treceri separate), 12 medie (cel puțin un șoc puternic), 14 mică. **De verificat: 22 de zone**, nu 184 de vârfuri. 32 de evenimente sunt „puternice”, dar niciunul nu are context bun (toate sunt la viteză mică sau pe o cale ambiguă).
+- Ion Vidu: 38 de evenimente → 0 manevrare, 1 slab izolat, 30 slabe și 7 puternice în 8 zone (toate cu prioritate mare: atinse în ambele treceri); toate 38 cu încredere redusă (viteză ~4 km/h), 5 cu GPS slab, 0 ambigue.
+- Tronsoane: pe porțiunile la 9–32 km/h, o stradă se împarte acum în bucăți (ex. un segment de 64 m de pe Strada Cluj: 0–16 m vibrații reduse, 16–32 m moderate, 32–64 m accentuate, toate cu încredere redusă); restul turei apare violet (explorare lentă) sau gri.
+
+**Implementat**
+- `src/core/roughness.ts`: triajul evenimentelor (manevrare / oprit / slab / puternic + motivele încrederii reduse), gruparea după incertitudinea GPS, treceri separate, prioritate, vibrația continuă din zonă față de restul turei la aceeași viteză. `tiltAround` în `vibration.ts`.
+- Tronsoane pe muchie (`segmentEdge`, `EdgeAgg.segments`), poziția ferestrelor pe muchie (`assignOffsets`, calculată și pentru turele vechi la pornire), hartă în verde/galben/roșu + gri (insuficient) + violet punctat (lent), cu grosimi diferite și legendă; A–E rămâne în detaliile tehnice. Fișa segmentului listează tronsoanele.
+- Verificarea după tură pe zone (`ReviewScreen`): rezumat cu numerele reale, hartă, carduri pe zone (stradă, întindere, evenimente, treceri, viteză, GPS, cel mai puternic +mm:ss, vibrație continuă), Confirmă / Nu e o problemă / Nu sunt sigur / Vezi dovezile; un singur raport local pe zonă confirmată. Diagnostic: toate evenimentele brute cu filtre (clasă, încredere, grupare, interval de timp, ordine) în `#/ride/<id>/events`.
+- Zonele de pe hartă folosesc același triaj și aceeași grupare (manevrarea și evenimentele slabe izolate nu mai apar ca zone).
+- Banner „Reprocesează” pentru turele procesate cu o versiune mai veche (verificat în aplicație pe tura reală: sg-1.1.0 → sg-1.2.0).
+- Stratul public poate conține poziția ferestrelor pe muchie (m, rotunjit) și indexul trecerii, fără timpi; auditul arată tronsoanele și zonele care s-ar publica.
+
+**Verificat**
+- Teste: **202/202** publice (+ 6 locale pe tura reală cu `SG_REAL_RIDE`: 208/208). Noi (`test/roughness.test.ts`): șoc izolat slab ≠ stradă roșie; rugozitate moderată fără vârfuri recunoscută; stradă împărțită bun/denivelat/bun; porțiunea netedă dintre două denivelate păstrată; tronsoane limitate de GPS; lentul rămâne explorare; treceri repetate fără dublare; vârfurile unui obstacol = un eveniment; două zone separate; bicicleta oprită; rotație și orientare schimbată = manevrare; prioritate din treceri repetate; grupare după incertitudine; șocurile/zonele/tronsoanele nu schimbă costul rutei; tronsoane publice fără ID-uri sau timpi, separate de cele locale; evenimentele brute recuperabile.
+- Browser (dev server, 375×812, tura reală): pagina turei („36 zone cu șocuri grupate · 22 de verificat · din 184”), reprocesarea, verificarea pe zone (Nu e o problemă → 16 evenimente respinse; Confirmă + tip → un singur raport), dovezile zonei (ambele treceri), diagnosticul (184 / 12 manevrare / 13 izolate / 0 puternice cu context bun), fișa tronsoanelor pe hartă; 0 erori, fără derulare orizontală.
+- Previzualizarea publicării (privat, nepublicat): varianta „doar RVI” = 83 m verde (încredere redusă) + 22 m insuficient pe Petre Râmneanțu și 2 zone; varianta „+ explorare” adaugă ~1,1 km violet; Ion Vidu rămâne exclus de raza de confidențialitate.
+- **Neverificat:** telefoane fizice; potrivirea zonelor cu filmarea; orice calibrare a culorilor.
+
 ## Prima tură reală și sprintul UniHack (14.11.2026, seara)
 Checkpoint: tag `checkpoint-before-unihack-sprint` (commit 04d529d, 170/170 teste, verificat la început).
 

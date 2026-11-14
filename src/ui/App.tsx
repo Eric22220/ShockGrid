@@ -20,6 +20,7 @@ import { ReportsPage } from './pages/ReportsPage';
 import { ReviewScreen } from './pages/ReviewScreen';
 import { RideDetail } from './pages/RideDetail';
 import { StreetPage } from './pages/StreetPage';
+import { EventsPage } from './pages/EventsPage';
 import { RidesPage } from './pages/RidesPage';
 import { RouteScreen } from './pages/RouteScreen';
 
@@ -60,7 +61,7 @@ export function App() {
     case 'rides': tab = 'rides'; page = <RidesPage />; break;
     case 'import': tab = 'rides'; page = <ImportPage />; break;
     case 'record': tab = 'rides'; navHidden = true; page = <RecordScreen />; break;
-    case 'ride': tab = 'rides'; page = arg2 === 'street' ? <StreetPage id={arg} name={params.get('name')} /> : arg2 === 'replay' ? <main className="screen"><div className="wrap"><Header title="Grafic vibrații" back={`#/ride/${arg}`} /><ReplayPage id={arg} /></div></main> : <RideDetail id={arg} />; break;
+    case 'ride': tab = 'rides'; page = arg2 === 'street' ? <StreetPage id={arg} name={params.get('name')} /> : arg2 === 'events' ? <EventsPage id={arg} /> : arg2 === 'replay' ? <main className="screen"><div className="wrap"><Header title="Grafic vibrații" back={`#/ride/${arg}`} /><ReplayPage id={arg} /></div></main> : <RideDetail id={arg} />; break;
     case 'review': tab = 'rides'; page = <ReviewScreen id={arg} shock={params.get('shock')} />; break;
     case 'compare': tab = 'rides'; page = <main className="screen"><div className="wrap"><Header title="Compară ture" back="#/rides" /><ComparePage /></div></main>; break;
     case 'report': tab = 'map'; navHidden = true; page = <ReportScreen id={arg} quick={params.get('quick') === '1'} lat={Number(params.get('lat'))} lon={Number(params.get('lon'))} />; break;

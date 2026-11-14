@@ -1,32 +1,54 @@
 import L from 'leaflet';
-import type { ComfortLayer, EdgeAgg, ShockZone } from '../../core/aggregate';
+import { roughOf, type ComfortLayer, type EdgeAgg, type RoughCat, type ShockZone } from '../../core/aggregate';
 import type { Graph } from '../../core/graph';
 import type { LocalReport } from '../../storage/idb';
-import { CLASS_COLORS } from '../format';
 
-/** Segmentele măsurate colorate pe clase; încrederea scăzută = linie întreruptă; nemăsurat = fără culoare. */
 /** culoarea neutră a segmentelor explorate doar la viteză redusă (fără clasă de confort) */
 export const EXPLORE_COLOR = '#8a7fb5';
+/** Hartă simplă, provizorie: verde = A–B, galben = C, roșu = D–E (relativ la ferestrele echipei). Grosimea crește cu
+ * vibrația, ca harta să nu depindă doar de culoare; încrederea redusă = linie întreruptă. */
+export const ROUGH_STYLE: Record<RoughCat, { color: string; weight: number }> = {
+  green: { color: '#1b7a3a', weight: 4 },
+  yellow: { color: '#d99a00', weight: 6 },
+  red: { color: '#b3261e', weight: 8 },
+};
+export const GREY_COLOR = '#8a929b';
 
+/** Segmentele colorate pe tronsoane (când avem poziții pe muchie), altfel pe toată muchia. Nemăsuratul nu se colorează. */
 export function drawComfort(g: L.LayerGroup, graph: Graph, layer: ComfortLayer, onClick: ((e: EdgeAgg) => void) | null, opts: { dim?: boolean; explore?: boolean } = {}) {
   const renderer = L.canvas({ tolerance: 10 });
-  // explorare la viteză redusă: linie punctată neutră, sub segmentele măsurate; nu e o clasă de confort
-  if (opts.explore !== false) {
-    for (const e of layer.edges.values()) {
-      if (e.status !== 'UNKNOWN' || !e.explore) continue;
-      const pl = L.polyline(graph.geometry(e.edge_id), { renderer, color: EXPLORE_COLOR, weight: 4, opacity: opts.dim ? 0.5 : 0.9, dashArray: '2 6', lineCap: 'round', interactive: !!onClick }).addTo(g);
-      if (onClick) pl.on('click', (ev) => { L.DomEvent.stopPropagation(ev); onClick(e); });
-    }
-  }
+  const op = opts.dim ? 0.55 : 1;
+  const click = (pl: L.Polyline, e: EdgeAgg) => { if (onClick) pl.on('click', (ev) => { L.DomEvent.stopPropagation(ev); onClick(e); }); };
+  const explore = (ll: [number, number][], e: EdgeAgg) => {
+    if (opts.explore === false) return;
+    click(L.polyline(ll, { renderer, color: EXPLORE_COLOR, weight: 4, opacity: opts.dim ? 0.5 : 0.9, dashArray: '2 6', lineCap: 'round', interactive: !!onClick }).addTo(g), e);
+  };
+  const grey = (ll: [number, number][], e: EdgeAgg) => click(L.polyline(ll, { renderer, color: GREY_COLOR, weight: 3, opacity: 0.8 * op, dashArray: '1 6', lineCap: 'round', interactive: !!onClick }).addTo(g), e);
+  const rough = (ll: [number, number][], cat: RoughCat, low: boolean, e: EdgeAgg) => {
+    const st = ROUGH_STYLE[cat];
+    L.polyline(ll, { renderer, color: '#ffffff', weight: st.weight + 3, opacity: 0.7 * op, interactive: false }).addTo(g);
+    click(L.polyline(ll, { renderer, color: st.color, weight: st.weight, opacity: op, dashArray: low ? '7 6' : undefined, lineCap: low ? 'butt' : 'round', interactive: !!onClick }).addTo(g), e);
+  };
+  // întâi explorarea și „date insuficiente”, apoi culorile (deasupra)
+  const later: (() => void)[] = [];
   for (const e of layer.edges.values()) {
-    if (e.status === 'UNKNOWN' || !e.class) continue;
+    const measured = e.status !== 'UNKNOWN' && !!e.class;
+    if (!measured && !e.explore) continue;
+    if (e.segments) {
+      for (const s of e.segments) {
+        if (s.cat === 'none') continue;
+        const ll = graph.slice(e.edge_id, s.from_m, s.to_m);
+        if (s.cat === 'explore') explore(ll, e);
+        else if (s.cat === 'insufficient') { if (measured) grey(ll, e); }
+        else later.push(() => rough(ll, s.cat as RoughCat, s.status !== 'measured', e));
+      }
+      continue;
+    }
     const ll = graph.geometry(e.edge_id);
-    const low = e.status === 'LOW_CONFIDENCE';
-    const op = opts.dim ? 0.55 : 1;
-    L.polyline(ll, { renderer, color: '#ffffff', weight: low ? 7 : 9, opacity: 0.7 * op, interactive: false }).addTo(g);
-    const pl = L.polyline(ll, { renderer, color: CLASS_COLORS[e.class], weight: low ? 4.5 : 6, opacity: op, dashArray: low ? '6 7' : undefined, lineCap: low ? 'butt' : 'round', interactive: !!onClick }).addTo(g);
-    if (onClick) pl.on('click', (ev) => { L.DomEvent.stopPropagation(ev); onClick(e); });
+    if (measured) later.push(() => rough(ll, roughOf(e.class!), e.status === 'LOW_CONFIDENCE', e));
+    else explore(ll, e);
   }
+  later.forEach((f) => f());
 }
 
 export function drawZones(g: L.LayerGroup, zones: ShockZone[], showReview: boolean, onClick: ((z: ShockZone) => void) | null) {
