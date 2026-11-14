@@ -1,7 +1,7 @@
 // Starea aplicației: graful, snapshotul, turele locale și stratul de confort derivat (8.6).
 import { useSyncExternalStore } from 'react';
 import {
-  aggregate, diffLayers, toContribution,
+  aggregate, diffLayers, inSnapshot, toContribution,
   type ComfortLayer, type LayerDiff, type Snapshot, type Thresholds,
 } from '../core/aggregate';
 import { DEFAULT_CONFIG, type VibrationConfig } from '../core/config';
@@ -18,6 +18,7 @@ import { processInWorker } from '../worker/client';
 import type { Place } from '../services/geocode';
 import { createReport, shockKey, type ReviewAnswer, type ShockReview } from '../services/reports';
 import type { Shock } from '../core/types';
+import type { RideInterval } from '../core/corridor';
 
 export interface Settings {
   cfg: VibrationConfig;
@@ -272,7 +273,7 @@ export async function importFile(file: File, declared: DeclaredSurface, onProgre
 export async function importBytes(name: string, bytes: ArrayBuffer, declared: DeclaredSurface, onProgress?: (stage: string, frac: number) => void) {
   const p = await processInWorker(name, bytes, state.settings.cfg, declared, onProgress);
   if (state.rides.some((r) => r.ride_id === p.ride_id)) throw new DuplicateRideError('Tura e deja importată pe acest telefon; nu o adăugăm a doua oară, ca trecerile să nu se numere de două ori.', p.ride_id);
-  if (state.snapshot?.meta.ride_ids.includes(p.ride_id)) throw new DuplicateRideError('Tura face deja parte din datele publicate de echipă; nu se importă din nou.', null);
+  if (inSnapshot(state.snapshot, p.ride_id)) throw new DuplicateRideError('Tura face deja parte din datele publicate de echipă; nu se importă din nou.', null);
   if (state.graph) { onProgress?.('potrivire pe hartă', 0.92); matchProcessed(p, state.graph, state.settings.cfg, declared); }
   const before = state.layer;
   const routeBefore = computeRoutes(before);
@@ -303,6 +304,15 @@ export async function setRideFields(id: string, patch: Partial<Pick<idb.StoredRi
   if (!full) return;
   const processed = patch.label !== undefined ? { ...full.processed, meta: { ...full.processed.meta, label: patch.label } } : full.processed;
   const upd = { ...full, ...('perceived' in patch ? { perceived: patch.perceived } : {}), processed };
+  await idb.putRide(upd);
+  set({ rides: state.rides.map((r) => (r.ride_id === id ? { ...upd, file: null } : r)) });
+}
+
+/** intervalele declarate din filmare (doar local; nu schimbă măsurătorile) */
+export async function setRideIntervals(id: string, intervals: RideInterval[]) {
+  const full = await idb.getRide(id);
+  if (!full) return;
+  const upd = { ...full, intervals };
   await idb.putRide(upd);
   set({ rides: state.rides.map((r) => (r.ride_id === id ? { ...upd, file: null } : r)) });
 }

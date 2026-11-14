@@ -5,6 +5,7 @@ import type { DeclaredSurface } from '../../core/types';
 import { t } from '../../i18n/ro';
 import { getRideFile, removeRide, setDeclaredSurface, setIncluded, setRideFields, useApp } from '../../state/store';
 import { RideMiniMap } from '../components/RideMiniMap';
+import { RideQualityCard } from '../components/RideQualityCard';
 import { RideSummaryCard } from '../components/RideSummaryCard';
 import { CLASS_COLORS, fmt, fmtLen, shareOrDownload } from '../format';
 import { Banner, Header, Stat, toast } from '../kit';
@@ -13,6 +14,9 @@ import { go } from '../App';
 export function RideDetail({ id }: { id?: string }) {
   const r = useApp((s) => s.rides.find((x) => x.ride_id === id));
   const th = useApp((s) => s.layer.thresholds);
+  const thSrc = useApp((s) => s.layer.thresholds_source);
+  // praguri calculate doar din această tură: împărțirea ar fi 20% pe clasă prin construcție, deci nu e informativă
+  const selfCalibrated = useApp((s) => s.layer.thresholds_source.startsWith('percentilele') && s.layer.ride_ids.length <= 1);
   const reviews = useApp((s) => s.reviews);
   const lastImport = useApp((s) => s.lastImport);
   const dist = useMemo(() => {
@@ -52,14 +56,17 @@ export function RideDetail({ id }: { id?: string }) {
       )}
       <div className="card">
         <h3>Cât de confortabil a fost</h3>
-        {valid > 0 ? (
+        {valid > 0 && selfCalibrated ? (
+          <p className="small muted">{valid} s de mers la 2,5–9 m/s sunt valide pentru RVI. Clasele A–E se calibrează din turele echipei; cu o singură tură, împărțirea ar fi 20% pe clasă prin construcție, deci nu o afișăm. Valorile RVI ale segmentelor sunt pe hartă.</p>
+        ) : valid > 0 ? (
           <>
             <div className="bar" style={{ height: 14, margin: '8px 0' }} aria-hidden="true">{CLASSES.map((c) => <i key={c} style={{ width: `${(100 * dist[c]) / valid}%`, background: CLASS_COLORS[c] }} />)}</div>
             <div className="small">{CLASSES.filter((c) => dist[c] > 0).map((c) => `${t.classShort[c]} ${Math.round((100 * dist[c]) / valid)}%`).join(' · ')}</div>
-            <p className="xs muted" style={{ marginTop: 6 }}>Din {valid} s de mers la viteză normală (2,5–9 m/s). Pornirile, opririle și GPS-ul slab nu intră în calcul.</p>
+            <p className="xs muted" style={{ marginTop: 6 }}>Din {valid} s de mers la viteză normală (2,5–9 m/s). Pornirile, opririle și GPS-ul slab nu intră în calcul. Clasele sunt relative la ferestrele echipei ({thSrc}), nu o scală absolută.</p>
           </>
-        ) : <p className="small muted">Nu avem porțiuni de mers la viteză normală cu GPS bun, deci nu putem estima confortul acestei ture.</p>}
+        ) : <p className="small muted">Nu avem porțiuni de mers la viteză normală (2,5–9 m/s) cu GPS bun, deci nu dăm o clasă de confort acestei ture. Porțiunile lente se pot inspecta în „Analiză pe stradă”, comparate doar la aceeași viteză.</p>}
       </div>
+      <RideQualityCard p={p} rideId={r.ride_id} />
       <RideMiniMap p={p} />
       <label className="switch card" style={{ padding: '6px 16px' }}><input type="checkbox" checked={r.included} onChange={(e) => setIncluded(r.ride_id, e.target.checked)} /><span><b>Folosește tura în harta mea</b><div className="xs muted">Doar pe acest telefon</div></span></label>
       <div className="grid2">

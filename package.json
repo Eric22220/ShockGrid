@@ -14,6 +14,7 @@
     "inspect": "tsx scripts/inspect.ts",
     "build-graph": "tsx scripts/build-graph.ts",
     "build-layer": "tsx scripts/build-layer.ts",
+    "audit-layer": "tsx scripts/audit-layer.ts",
     "validate": "tsx scripts/validate.ts"
   },
   "dependencies": {

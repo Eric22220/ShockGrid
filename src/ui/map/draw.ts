@@ -5,8 +5,19 @@ import type { LocalReport } from '../../storage/idb';
 import { CLASS_COLORS } from '../format';
 
 /** Segmentele măsurate colorate pe clase; încrederea scăzută = linie întreruptă; nemăsurat = fără culoare. */
-export function drawComfort(g: L.LayerGroup, graph: Graph, layer: ComfortLayer, onClick: ((e: EdgeAgg) => void) | null, opts: { dim?: boolean } = {}) {
+/** culoarea neutră a segmentelor explorate doar la viteză redusă (fără clasă de confort) */
+export const EXPLORE_COLOR = '#8a7fb5';
+
+export function drawComfort(g: L.LayerGroup, graph: Graph, layer: ComfortLayer, onClick: ((e: EdgeAgg) => void) | null, opts: { dim?: boolean; explore?: boolean } = {}) {
   const renderer = L.canvas({ tolerance: 10 });
+  // explorare la viteză redusă: linie punctată neutră, sub segmentele măsurate; nu e o clasă de confort
+  if (opts.explore !== false) {
+    for (const e of layer.edges.values()) {
+      if (e.status !== 'UNKNOWN' || !e.explore) continue;
+      const pl = L.polyline(graph.geometry(e.edge_id), { renderer, color: EXPLORE_COLOR, weight: 4, opacity: opts.dim ? 0.5 : 0.9, dashArray: '2 6', lineCap: 'round', interactive: !!onClick }).addTo(g);
+      if (onClick) pl.on('click', (ev) => { L.DomEvent.stopPropagation(ev); onClick(e); });
+    }
+  }
   for (const e of layer.edges.values()) {
     if (e.status === 'UNKNOWN' || !e.class) continue;
     const ll = graph.geometry(e.edge_id);

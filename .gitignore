@@ -10,6 +10,6 @@ dev-dist/
 rides/
 sample-data/
 eval/private/
-
+/rides/
 # Ghidul primit la UniHack (nu e al nostru, nu îl republicăm)
 *.pdf

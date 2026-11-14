@@ -1,5 +1,6 @@
 // IndexedDB: turele procesate (private, doar pe dispozitiv), fișierul original, setările, înregistrarea în curs.
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
+import type { RideInterval } from '../core/corridor';
 import type { ProcessedRide } from '../core/types';
 
 export interface StoredRide {
@@ -10,6 +11,8 @@ export interface StoredRide {
   included: boolean; // includerea în stratul agregat: alegere explicită, pe tură
   imported_at: number;
   perceived?: number | null; // nota 1–5 a biciclistului
+  /** intervale declarate de echipă (din filmare/notițe), doar pe acest telefon */
+  intervals?: RideInterval[];
 }
 
 export interface RecChunk {
@@ -19,7 +22,7 @@ export interface RecChunk {
   data: unknown;
 }
 
-export type ReportType = 'groapa' | 'denivelare' | 'capac' | 'rost' | 'asfalt' | 'obstacol' | 'alta' | 'nespecificat';
+export type ReportType = 'groapa' | 'denivelare' | 'tranzitie' | 'fisura' | 'capac' | 'rost' | 'asfalt' | 'obstacol' | 'alta' | 'nespecificat';
 export type ReportStatus = 'draft' | 'local';
 
 /** Raport personal: stă DOAR pe acest dispozitiv. Nu există o bază comună de rapoarte. */

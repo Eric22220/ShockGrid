@@ -27,9 +27,10 @@ export function useLeaflet(opts: { zoom?: number; center?: [number, number]; onC
     m.on('click', (e: L.LeafletMouseEvent) => clickRef.current?.(e.latlng.lat, e.latlng.lng));
     m.on('dragstart', () => dragRef.current?.());
     setMap(m);
+    if (import.meta.env.DEV) (window as unknown as { __map?: L.Map }).__map = m; // doar pentru testare locală
     const ro = new ResizeObserver(() => m.invalidateSize());
     ro.observe(ref.current);
-    return () => { ro.disconnect(); m.remove(); setMap(null); };
+    return () => { ro.disconnect(); m.stop(); m.remove(); setMap(null); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return { ref, map };

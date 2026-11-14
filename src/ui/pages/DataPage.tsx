@@ -1,4 +1,5 @@
 import { Download } from 'lucide-react';
+import { snapshotRideCount } from '../../core/aggregate';
 import { comfortGeoJSON, comfortRows, zoneRows, zonesGeoJSON } from '../../core/export';
 import { useApp } from '../../state/store';
 import { download } from '../format';
@@ -11,7 +12,7 @@ export function DataPage() {
   const rides = useApp((s) => s.rides);
   const reports = useApp((s) => s.reports);
   const gm = graph?.json.meta;
-  const pub = snapshot?.meta.ride_ids.length ?? 0;
+  const pub = snapshotRideCount(snapshot);
   return (
     <main className="screen"><div className="wrap stack">
       <Header title="Date și surse" back="#/more" />

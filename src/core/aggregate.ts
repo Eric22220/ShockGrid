@@ -1,6 +1,8 @@
 // Agregarea pe muchii (8.3, 6.9), clasele (6.8), zonele cu șoc (6.10) și diferența înainte/după (8.6).
 import { DEFAULT_CONFIG, DEFAULT_THRESHOLDS, type VibrationConfig } from './config';
 import { haversine } from './geo';
+import { defaultRules, publicKey, publishFilter, rideEnds, type PublishRules } from './publish';
+import { EXPLORE_BANDS, isExploratory } from './quality';
 import { median, medianOrNull, percentileSorted } from './stats';
 import type { ProcessedRide, RideSource, Shock, SurfaceKind } from './types';
 
@@ -15,7 +17,8 @@ export interface RideContribution {
   source: RideSource;
   processing_version: string;
   date: number; // ms, ziua turei (pentru last_seen)
-  windows: { edge: number; rms: number; speed: number | null; acc: number | null; valid: boolean; amb: boolean; pass: number }[];
+  /** slow = fereastră de explorare la viteză redusă (nu intră în RVI, clase sau rutare) */
+  windows: { edge: number; rms: number; speed: number | null; acc: number | null; valid: boolean; amb: boolean; pass: number; slow?: boolean }[];
   shocks: Shock[];
   included_in_layer: boolean;
 }
@@ -32,6 +35,10 @@ export interface SnapshotEdge {
   n_rides: number;
   last_seen: string; // AAAA-LL-ZZ
   sources: RideSource[];
+  /** explorare la viteză redusă (doar dacă stratul a fost construit cu --exploratory) */
+  slow_rms?: number[];
+  slow_speed?: number[];
+  slow_passes?: number;
 }
 
 export interface SnapshotShock {
@@ -46,7 +53,11 @@ export interface Snapshot {
     thresholds: Thresholds | null;
     thresholds_source: string;
     device_note: string;
-    ride_ids: string[];
+    /** vechi: ID-urile turelor. Straturile noi publică doar chei de deduplicare (publicKey), nu ID-uri. */
+    ride_ids?: string[];
+    ride_keys?: string[];
+    n_rides?: number;
+    includes_exploratory?: boolean;
     attribution: string;
     license: string;
   };
@@ -70,6 +81,24 @@ export interface EdgeAgg {
   ambiguous_ratio: number;
   last_seen: string | null;
   sources: RideSource[];
+  /** vitezele ferestrelor valide (percentilele 10 și 90), m/s */
+  speed_p10: number | null;
+  speed_p90: number | null;
+  /** de unde vin datele: stratul publicat de echipă și/sau turele de pe acest telefon */
+  origin: ('public' | 'local')[];
+  /** Explorare la viteză redusă (0,5–2,5 m/s): NU e RVI, nu are clasă și nu schimbă statusul sau rutarea. */
+  explore: ExploreAgg | null;
+}
+
+export interface ExploreAgg {
+  n: number;
+  rms_p50: number;
+  rms_p90: number;
+  speed_p50: number;
+  /** precizia GPS mediană a ferestrelor lente (m), dacă e cunoscută */
+  acc_p50: number | null;
+  passes: number;
+  bands: { id: string; label: string; n: number; rms_p50: number }[];
 }
 
 export type ZoneStatus = 'REPEATED' | 'CANDIDATE' | 'NEEDS_REVIEW' | 'REJECTED';
@@ -105,6 +134,11 @@ export interface ComfortLayer {
   n_valid_windows: number;
 }
 
+/** câte ture conține stratul publicat (format vechi: ride_ids, nou: ride_keys) */
+export const snapshotRideCount = (s: Snapshot | null) => (s ? s.meta.n_rides ?? s.meta.ride_keys?.length ?? s.meta.ride_ids?.length ?? 0 : 0);
+/** tura locală e deja în stratul publicat? */
+export const inSnapshot = (s: Snapshot | null, rideId: string) => !!s && (!!s.meta.ride_ids?.includes(rideId) || !!s.meta.ride_keys?.includes(publicKey(rideId)));
+
 export function classOf(rms: number, th: Thresholds): ComfortClass {
   if (rms < th[0]) return 'A';
   if (rms < th[1]) return 'B';
@@ -119,7 +153,7 @@ export function toContribution(p: ProcessedRide, included = true): RideContribut
     source: p.meta.source,
     processing_version: p.processing_version,
     date: p.meta.start_ms,
-    windows: p.windows.filter((w) => w.edge >= 0).map((w) => ({ edge: w.edge, rms: w.rms, speed: w.speed, acc: w.acc, valid: w.valid, amb: w.amb, pass: w.pass })),
+    windows: p.windows.filter((w) => w.edge >= 0).map((w) => ({ edge: w.edge, rms: w.rms, speed: w.speed, acc: w.acc, valid: w.valid, amb: w.amb, pass: w.pass, slow: isExploratory(w) })),
     shocks: p.shocks.filter((s) => s.located),
     included_in_layer: included,
   };
@@ -144,17 +178,19 @@ export function aggregate(inp: AggregateInput): ComfortLayer {
   const cfg = inp.cfg ?? DEFAULT_CONFIG;
   const snap = inp.snapshot ?? null;
   const snapIds = new Set(snap?.meta.ride_ids ?? []);
+  const snapKeys = new Set(snap?.meta.ride_keys ?? []);
+  const inSnap = (id: string) => snapIds.has(id) || snapKeys.has(publicKey(id));
   // turele locale deja incluse în snapshot nu se numără de două ori
   // aceeași tură de două ori se numără o singură dată
   const uniq = new Map<string, RideContribution>();
-  for (const r of inp.rides) if (r.included_in_layer && !snapIds.has(r.ride_id) && !uniq.has(r.ride_id)) uniq.set(r.ride_id, r);
+  for (const r of inp.rides) if (r.included_in_layer && !inSnap(r.ride_id) && !uniq.has(r.ride_id)) uniq.set(r.ride_id, r);
   const rides = [...uniq.values()].sort((a, b) => (a.ride_id < b.ride_id ? -1 : 1));
 
-  interface Acc { rms: number[]; speed: number[]; acc: number[]; total: number; amb: number; passes: number; rides: number; last: string | null; sources: Set<RideSource> }
+  interface Acc { rms: number[]; speed: number[]; acc: number[]; total: number; amb: number; passes: number; rides: number; last: string | null; sources: Set<RideSource>; origin: Set<'public' | 'local'>; slowRms: number[]; slowSpeed: number[]; slowAcc: number[]; slowPasses: number }
   const edges = new Map<number, Acc>();
   const get = (e: number) => {
     let a = edges.get(e);
-    if (!a) { a = { rms: [], speed: [], acc: [], total: 0, amb: 0, passes: 0, rides: 0, last: null, sources: new Set() }; edges.set(e, a); }
+    if (!a) { a = { rms: [], speed: [], acc: [], total: 0, amb: 0, passes: 0, rides: 0, last: null, sources: new Set(), origin: new Set(), slowRms: [], slowSpeed: [], slowAcc: [], slowPasses: 0 }; edges.set(e, a); }
     return a;
   };
   for (const se of snap?.edges ?? []) {
@@ -163,13 +199,24 @@ export function aggregate(inp: AggregateInput): ComfortLayer {
     a.total += se.n_total; a.amb += se.n_amb; a.passes += se.n_passes; a.rides += se.n_rides;
     a.last = !a.last || se.last_seen > a.last ? se.last_seen : a.last;
     se.sources.forEach((s) => a.sources.add(s));
+    a.origin.add('public');
+    if (se.slow_rms?.length) { a.slowRms.push(...se.slow_rms); a.slowSpeed.push(...(se.slow_speed ?? [])); a.slowPasses += se.slow_passes ?? 0; }
   }
   for (const r of rides) {
     const touched = new Map<number, Set<number>>();
+    const slowTouched = new Map<number, Set<number>>();
     for (const w of r.windows) {
       const a = get(w.edge);
       a.total++;
+      a.origin.add('local');
       if (w.amb) a.amb++;
+      if (w.slow && w.speed !== null) {
+        a.slowRms.push(w.rms); a.slowSpeed.push(w.speed);
+        if (w.acc !== null) a.slowAcc.push(w.acc);
+        let s = slowTouched.get(w.edge);
+        if (!s) { s = new Set(); slowTouched.set(w.edge, s); }
+        s.add(w.pass);
+      }
       if (!w.valid) continue;
       a.rms.push(w.rms);
       if (w.speed !== null) a.speed.push(w.speed);
@@ -183,6 +230,12 @@ export function aggregate(inp: AggregateInput): ComfortLayer {
       const a = get(e);
       a.passes += passes.size;
       a.rides += 1;
+      const d = day(r.date);
+      a.last = !a.last || d > a.last ? d : a.last;
+    }
+    for (const [e, passes] of slowTouched) {
+      const a = get(e);
+      a.slowPasses += passes.size;
       const d = day(r.date);
       a.last = !a.last || d > a.last ? d : a.last;
     }
@@ -234,6 +287,10 @@ export function aggregate(inp: AggregateInput): ComfortLayer {
       ambiguous_ratio: ambRatio,
       last_seen: a.last,
       sources: [...a.sources].sort(),
+      speed_p10: a.speed.length ? percentileSorted([...a.speed].sort((x, y) => x - y), 10) : null,
+      speed_p90: a.speed.length ? percentileSorted([...a.speed].sort((x, y) => x - y), 90) : null,
+      origin: [...a.origin].sort(),
+      explore: exploreOf(a.slowRms, a.slowSpeed, a.slowAcc, a.slowPasses),
     });
   }
 
@@ -250,6 +307,19 @@ export function aggregate(inp: AggregateInput): ComfortLayer {
     ride_ids: [...new Set([...(snap?.meta.ride_ids ?? []), ...rides.map((r) => r.ride_id)])].sort(),
     n_valid_windows: allRms.length,
   };
+}
+
+/** minim de ferestre lente pe o muchie ca să o afișăm ca „explorată” */
+export const EXPLORE_MIN_WINDOWS = 5;
+
+function exploreOf(rms: number[], speed: number[], acc: number[], passes: number): ExploreAgg | null {
+  if (rms.length < EXPLORE_MIN_WINDOWS) return null;
+  const sorted = [...rms].sort((a, b) => a - b);
+  const bands = EXPLORE_BANDS.map((b) => {
+    const r = rms.filter((_, i) => speed[i] >= b.lo && speed[i] < b.hi).sort((x, y) => x - y);
+    return { id: b.id, label: b.label, n: r.length, rms_p50: r.length ? percentileSorted(r, 50) : 0 };
+  }).filter((b) => b.n > 0);
+  return { n: rms.length, rms_p50: percentileSorted(sorted, 50), rms_p90: percentileSorted(sorted, 90), speed_p50: median(speed), acc_p50: medianOrNull(acc), passes, bands };
 }
 
 interface Det { id: string; lat: number; lon: number; r: number; peak: number; double_hit: boolean; speed: number | null; edge: number; needs_review: boolean; pass_key: string; snippet?: { dt: number; v: number[] }; date: string; flags: string[] }
@@ -370,19 +440,44 @@ export function diffLayers(a: ComfortLayer, b: ComfortLayer, lengthOf: (e: numbe
 }
 
 /** Snapshot publicabil: exclude primii și ultimii trim_m metri ai fiecărei ture, fără timpi și ID-uri de dispozitiv. */
-export function buildSnapshot(rides: ProcessedRide[], cfg: VibrationConfig, deviceNote: string, thresholds: Thresholds | null, thSrc: string): Snapshot {
+export interface SnapshotOptions {
+  /** include explorarea la viteză redusă (implicit nu) */
+  exploratory?: boolean;
+  /** șocurile publicate: niciunul, doar cele fără „de verificat” (implicit) sau toate */
+  shocks?: 'none' | 'clean' | 'all';
+  rules?: PublishRules;
+  /** geometria muchiilor: elimină și muchiile care TREC prin raza de confidențialitate, nu doar ferestrele din ea */
+  geometry?: (edge: number) => [number, number][];
+}
+
+/** Stratul public. Fără timpi individuali, fără ID-uri de tură sau de telefon, fără nume de fișiere, fără nimic în
+ * primii/ultimii publish_trim_m metri și nimic la mai puțin de PRIVACY_RADIUS_M de începutul/sfârșitul turei. */
+export function buildSnapshot(rides: ProcessedRide[], cfg: VibrationConfig, deviceNote: string, thresholds: Thresholds | null, thSrc: string, opts: SnapshotOptions = {}): Snapshot {
   const edges = new Map<number, SnapshotEdge>();
   const shocks: SnapshotShock[] = [];
+  const shockMode = opts.shocks ?? 'clean';
   for (const p of rides) {
-    const total = p.summary.distance_m;
-    const keep = (d: number) => d >= cfg.publish_trim_m && d <= total - cfg.publish_trim_m;
+    const keep = publishFilter(p, cfg, opts.rules);
+    const key = publicKey(p.ride_id);
     const passesByEdge = new Map<number, Set<number>>();
+    const slowByEdge = new Map<number, Set<number>>();
+    const getE = (id: number) => {
+      let e = edges.get(id);
+      if (!e) { e = { edge_id: id, rms: [], speed: [], acc: [], n_total: 0, n_amb: 0, n_passes: 0, n_rides: 0, last_seen: '', sources: [] }; edges.set(id, e); }
+      return e;
+    };
     for (const w of p.windows) {
-      if (w.edge < 0 || !keep(w.dist)) continue;
-      let e = edges.get(w.edge);
-      if (!e) { e = { edge_id: w.edge, rms: [], speed: [], acc: [], n_total: 0, n_amb: 0, n_passes: 0, n_rides: 0, last_seen: '', sources: [] }; edges.set(w.edge, e); }
+      if (w.edge < 0 || !keep(w.dist, w.lat, w.lon)) continue;
+      const e = getE(w.edge);
       e.n_total++;
       if (w.amb) e.n_amb++;
+      if (opts.exploratory && isExploratory(w, cfg)) {
+        (e.slow_rms ??= []).push(Math.round(w.rms * 1000) / 1000);
+        (e.slow_speed ??= []).push(Math.round(w.speed! * 100) / 100);
+        let s = slowByEdge.get(w.edge);
+        if (!s) { s = new Set(); slowByEdge.set(w.edge, s); }
+        s.add(w.pass);
+      }
       if (!w.valid) continue;
       e.rms.push(Math.round(w.rms * 1000) / 1000);
       if (w.speed !== null) e.speed.push(Math.round(w.speed * 100) / 100);
@@ -399,16 +494,32 @@ export function buildSnapshot(rides: ProcessedRide[], cfg: VibrationConfig, devi
       const d = day(p.meta.start_ms);
       if (d > e.last_seen) e.last_seen = d;
     }
+    for (const [eid, s] of slowByEdge) {
+      const e = edges.get(eid)!;
+      e.slow_passes = (e.slow_passes ?? 0) + s.size;
+      const d = day(p.meta.start_ms);
+      if (d > e.last_seen) e.last_seen = d;
+      if (!e.sources.includes(p.meta.source)) e.sources.push(p.meta.source);
+    }
+    if (shockMode === 'none') continue;
     for (const s of p.shocks) {
       if (!s.located || s.lat === null || s.lon === null) continue;
+      if (shockMode === 'clean' && s.needs_review) continue;
       const w = p.windows.find((w) => s.t >= w.t0 && s.t < w.t1);
-      if (!w || !keep(w.dist)) continue;
+      if (!w || !keep(w.dist, s.lat, s.lon)) continue;
       shocks.push({
         lat: Math.round(s.lat * 1e6) / 1e6, lon: Math.round(s.lon * 1e6) / 1e6, r: Math.round((s.r ?? 10) * 10) / 10,
         peak: Math.round(s.peak * 100) / 100, z: Math.round(s.z * 10) / 10, double_hit: s.double_hit,
         speed: s.speed === null ? null : Math.round(s.speed * 100) / 100, edge: s.edge, needs_review: s.needs_review,
-        pass_key: `${p.ride_id}:${s.edge}:${s.pass}`, snippet: s.snippet, date: day(s.t),
+        pass_key: `${key}:${s.edge}:${s.pass}`, snippet: s.snippet, date: day(s.t),
       });
+    }
+  }
+  const radius = (opts.rules ?? defaultRules(cfg)).radius_m;
+  if (opts.geometry && radius > 0) {
+    const ends = rides.flatMap(rideEnds);
+    for (const id of [...edges.keys()]) {
+      if (opts.geometry(id).some(([la, lo]) => ends.some((f) => haversine(f.lat, f.lon, la, lo) < radius))) edges.delete(id);
     }
   }
   return {
@@ -418,11 +529,13 @@ export function buildSnapshot(rides: ProcessedRide[], cfg: VibrationConfig, devi
       thresholds,
       thresholds_source: thSrc,
       device_note: deviceNote,
-      ride_ids: rides.map((r) => r.ride_id).sort(),
+      ride_keys: rides.map((r) => publicKey(r.ride_id)).sort(),
+      n_rides: rides.length,
+      includes_exploratory: !!opts.exploratory,
       attribution: '© OpenStreetMap contributors',
       license: 'ODbL-1.0',
     },
-    edges: [...edges.values()].filter((e) => e.n_total > 0).sort((a, b) => a.edge_id - b.edge_id),
-    shocks,
+    edges: [...edges.values()].filter((e) => e.n_total > 0 && (e.rms.length > 0 || (e.slow_rms?.length ?? 0) >= EXPLORE_MIN_WINDOWS)).sort((a, b) => a.edge_id - b.edge_id),
+    shocks: shocks.sort((a, b) => a.lat - b.lat || a.lon - b.lon),
   };
 }

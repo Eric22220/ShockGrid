@@ -68,7 +68,7 @@ export function RouteScreen({ focus }: { focus: string | null }) {
   const chosen = result?.options.find((o) => o.key === selected) ?? result?.options[0] ?? null;
   const routePts = useMemo(() => (graph && chosen ? routeLatLngs(graph, chosen.r.edges) : []), [graph, chosen]);
 
-  useLayerGroup(map, (g) => { if (graph) drawComfort(g, graph, layer, null, { dim: true }); }, [graph, layer]);
+  useLayerGroup(map, (g) => { if (graph) drawComfort(g, graph, layer, null, { dim: true, explore: false }); }, [graph, layer]);
   const fitted = useRef('');
   useLayerGroup(map, (g) => {
     if (!graph || !result) { if (A) L.marker(A, { icon: pinIcon('A', '#1857f5') }).addTo(g); if (B) L.marker(B, { icon: pinIcon('B', '#c2261b') }).addTo(g); return; }

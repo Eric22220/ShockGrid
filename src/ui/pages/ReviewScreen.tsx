@@ -1,5 +1,6 @@
 import { CheckCircle2, HelpCircle, ThumbsDown, ThumbsUp } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { fmtOffset, rideStart } from '../../core/corridor';
 import type { Shock } from '../../core/types';
 import { nearestStreetName } from '../../services/geocode';
 import { intensity, REPORT_TYPES, shockKey, type ReviewAnswer } from '../../services/reports';
@@ -8,13 +9,14 @@ import { reviewShock, useApp } from '../../state/store';
 import { Banner, Header } from '../kit';
 import { L, useLayerGroup, useLeaflet } from '../map/useLeaflet';
 
-export function ReviewScreen({ id }: { id?: string }) {
+export function ReviewScreen({ id, shock }: { id?: string; shock?: string | null }) {
   const ride = useApp((s) => s.rides.find((r) => r.ride_id === id));
   const reviews = useApp((s) => s.reviews);
   const graph = useApp((s) => s.graph);
   const shocks = useMemo(() => (ride?.processed.shocks ?? []).filter((s) => s.located).sort((a, b) => a.t - b.t), [ride]);
-  const [started, setStarted] = useState(false);
-  const [i, setI] = useState(0);
+  const jump = shock ? shocks.findIndex((s) => s.id === shock) : -1;
+  const [started, setStarted] = useState(jump >= 0);
+  const [i, setI] = useState(Math.max(0, jump));
   if (!ride) return <main className="screen"><div className="wrap"><Header title="Verificare" back="#/rides" /><p>Tura nu există pe acest telefon.</p></div></main>;
   const pending = shocks.filter((s) => !reviews[shockKey(ride.ride_id, s.id)]).length;
   if (!shocks.length) return <main className="screen"><div className="wrap stack"><Header title="Nicio denivelare" back={`#/ride/${ride.ride_id}`} /><p>Algoritmul nu a observat șocuri candidate în această tură.</p><a className="btn primary block" href={`#/ride/${ride.ride_id}`}>Vezi tura</a></div></main>;
@@ -48,13 +50,13 @@ export function ReviewScreen({ id }: { id?: string }) {
   return (
     <main className="screen"><div className="wrap stack">
       <Header title={`Denivelarea ${i + 1} din ${shocks.length}`} back={`#/ride/${ride.ride_id}`} />
-      <ShockCard key={s.id} s={s} street={graph && s.lat !== null ? nearestStreetName(graph, s.lat, s.lon!) : null} prev={reviews[shockKey(ride.ride_id, s.id)]?.answer}
+      <ShockCard key={s.id} s={s} t0={rideStart(ride.processed)} street={graph && s.lat !== null ? nearestStreetName(graph, s.lat, s.lon!) : null} prev={reviews[shockKey(ride.ride_id, s.id)]?.answer}
         onAnswer={async (a, type) => { await reviewShock(ride.ride_id, s, a, type); setI(i + 1); }} onSkip={() => setI(i + 1)} />
     </div></main>
   );
 }
 
-function ShockCard({ s, street, prev, onAnswer, onSkip }: { s: Shock; street: string | null; prev?: ReviewAnswer; onAnswer: (a: ReviewAnswer, t?: ReportType) => void; onSkip: () => void }) {
+function ShockCard({ s, t0, street, prev, onAnswer, onSkip }: { s: Shock; t0: number; street: string | null; prev?: ReviewAnswer; onAnswer: (a: ReviewAnswer, t?: ReportType) => void; onSkip: () => void }) {
   const [askType, setAskType] = useState(false);
   const { ref, map } = useLeaflet({ zoom: 17, center: [s.lat!, s.lon!], interactive: false });
   useLayerGroup(map, (g) => {
@@ -67,7 +69,8 @@ function ShockCard({ s, street, prev, onAnswer, onSkip }: { s: Shock; street: st
       <div ref={ref} className="map inline" role="img" aria-label="Locul aproximativ al denivelării" />
       <div className="card">
         <dl className="kv">
-          <dt>Ora</dt><dd>{new Date(s.t).toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</dd>
+          <dt>Ora</dt><dd>{new Date(s.t).toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit', second: '2-digit' })} · +{fmtOffset((s.t - t0) / 1000)} de la început</dd>
+          <dt>Viteză</dt><dd>{s.speed === null ? 'necunoscută' : `${s.speed.toFixed(1)} m/s (${Math.round(s.speed * 3.6)} km/h)`}</dd>
           <dt>Loc aproximativ</dt><dd>{street ?? 'stradă necunoscută'} (±{Math.round(s.r ?? 10)} m)</dd>
           <dt>Intensitate</dt><dd><div className="row nowrap"><span>{it.level}</span><div className="bar grow" style={{ maxWidth: 140 }}><i style={{ width: `${it.pct * 100}%`, background: '#e8590c' }} /></div></div></dd>
           {s.needs_review && <><dt>Notă</dt><dd className="small">măsurătoare mai puțin sigură (viteză sau mișcarea telefonului)</dd></>}

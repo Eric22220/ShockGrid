@@ -6,6 +6,8 @@ import type { LocalReport, ReportType } from '../storage/idb';
 export const REPORT_TYPES: { id: ReportType; label: string; hint: string }[] = [
   { id: 'groapa', label: 'Groapă', hint: 'gol în asfalt' },
   { id: 'denivelare', label: 'Denivelare', hint: 'speed bump, val de asfalt' },
+  { id: 'tranzitie', label: 'Trecere denivelată', hint: 'bordură, rampă, diferență de nivel' },
+  { id: 'fisura', label: 'Fisură', hint: 'crăpătură în suprafață' },
   { id: 'capac', label: 'Capac de canal', hint: 'denivelat sau lipsă' },
   { id: 'rost', label: 'Rost / șine', hint: 'rost de pod, șine de tramvai' },
   { id: 'asfalt', label: 'Asfalt deteriorat', hint: 'crăpat, peticit, pavaj' },

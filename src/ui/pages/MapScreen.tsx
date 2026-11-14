@@ -1,6 +1,6 @@
 import { Flag, Layers, LocateFixed, Locate, LocateOff, Search } from 'lucide-react';
 import { useMemo, useState, useSyncExternalStore } from 'react';
-import { CLASSES, type EdgeAgg, type ShockZone } from '../../core/aggregate';
+import { CLASSES, snapshotRideCount, type EdgeAgg, type ShockZone } from '../../core/aggregate';
 import { t } from '../../i18n/ro';
 import { rideActive, subscribeRide } from '../../services/ride';
 import { typeLabel, VISIBILITY_LABEL } from '../../services/reports';
@@ -9,7 +9,8 @@ import { rejectZone, updateSettings, useApp } from '../../state/store';
 import { UPlot } from '../charts/UPlot';
 import { CLASS_COLORS, fmt, fmtLen } from '../format';
 import { Banner, ClassBadge, Sheet } from '../kit';
-import { drawComfort, drawReports, drawTrack, drawZones } from '../map/draw';
+import { drawComfort, drawReports, drawTrack, drawZones, EXPLORE_COLOR } from '../map/draw';
+import { distToEdges } from '../../core/corridor';
 import { useLocation, useMeLayer } from '../map/me';
 import { useLayerGroup, useLeaflet } from '../map/useLeaflet';
 import { go } from '../App';
@@ -99,6 +100,7 @@ export function MapScreen({ focus }: { focus?: string }) {
                 <div key={c} className="legend-row"><span className="legend-line" style={{ background: CLASS_COLORS[c] }} /><b style={{ width: 18 }}>{c}</b><span>{t.classShort[c]}</span></div>
               ))}
               <div className="legend-row"><span className="legend-line" style={{ background: 'repeating-linear-gradient(90deg,#5a6677 0 6px,transparent 6px 11px)' }} /><span>Linie întreruptă: puține măsurători</span></div>
+              <div className="legend-row"><span className="legend-line" style={{ background: `repeating-linear-gradient(90deg,${EXPLORE_COLOR} 0 3px,transparent 3px 8px)` }} /><span>Punctat violet: parcurs doar lent (explorare, fără clasă)</span></div>
               <div className="legend-row"><span className="legend-line" style={{ background: 'var(--surface-3)' }} /><span>Fără culoare: încă nemăsurat (nu înseamnă neted)</span></div>
               <div className="legend-row"><span className="legend-line" style={{ background: '#e8590c', height: 12, width: 12, borderRadius: 6, marginLeft: 9, marginRight: 9 }} /><span>Posibilă denivelare detectată</span></div>
               <div className="legend-row"><span className="legend-line" style={{ background: '#c2261b', height: 14, width: 14, borderRadius: 4, marginLeft: 8, marginRight: 8 }} /><span>Rapoartele tale (doar pe acest telefon)</span></div>
@@ -112,7 +114,7 @@ export function MapScreen({ focus }: { focus?: string }) {
             <label className="switch"><input type="checkbox" checked={showTracks} onChange={(e) => setShowTracks(e.target.checked)} />Traseele turelor mele</label>
             <div className="small muted">
               {measured > 0 ? `${measured} segmente de stradă cu date.` : 'Încă nu sunt străzi măsurate. Fă o tură sau importă una din Sensor Logger: harta se actualizează imediat.'}{' '}
-              Date publicate de echipă: {snapshot && snapshot.meta.ride_ids.length ? `actualizate ${snapshot.meta.generated_at.slice(0, 10)}` : 'încă nicio tură publicată'}.
+              Date publicate de echipă: {snapshotRideCount(snapshot) ? `actualizate ${snapshot!.meta.generated_at.slice(0, 10)}` : 'încă nicio tură publicată'}.
               {lastLocal > 0 && ` Ultima ta tură: ${new Date(lastLocal).toLocaleDateString('ro-RO')}.`}
             </div>
             <p className="xs muted">Clasele sunt relative la telefonul, bicicleta și suportul folosite la măsurare. Confortul nu înseamnă siguranță. <a href="#/more/method">Cum măsurăm</a></p>
@@ -127,30 +129,51 @@ export function MapScreen({ focus }: { focus?: string }) {
 }
 
 function EdgeSheet({ e, name, len, osm, version, onClose }: { e: EdgeAgg; name: string; len: number; osm: string; version: string; onClose: () => void }) {
-  const cls = e.class!;
-  const sure = e.status === 'MEASURED';
+  const layer = useApp((s) => s.layer);
+  const graph = useApp((s) => s.graph);
+  const reports = useApp((s) => s.reports);
+  const zones = useMemo(() => layer.zones.filter((z) => z.edge_id === e.edge_id && z.status !== 'REJECTED'), [layer, e.edge_id]);
+  const manual = useMemo(() => (graph ? reports.filter((r) => distToEdges(graph, [e.edge_id], r.lat, r.lon) <= 20).length : 0), [graph, reports, e.edge_id]);
+  const measured = e.status !== 'UNKNOWN' && !!e.class;
+  const x = e.explore;
+  const status = e.status === 'MEASURED' ? { t: 'Măsurat', k: 'comfort' } : e.status === 'LOW_CONFIDENCE' ? { t: 'Încredere redusă', k: 'warn' } : x ? { t: 'Explorat la viteză redusă', k: 'primary' } : { t: 'Nemăsurat', k: '' };
+  const accM = e.gps_acc_median ?? x?.acc_p50 ?? null;
+  const gps = accM === null ? null : accM <= 6 ? 'bună' : accM <= 10 ? 'medie' : 'slabă';
+  const kmh = (v: number | null) => (v === null ? '—' : `${Math.round(v * 3.6)}`);
   return (
     <Sheet title={name} onClose={onClose}>
       <div className="stack">
         <div className="row nowrap">
-          <ClassBadge c={cls} />
-          <div className="grow"><b>{t.classShort[cls]}</b><div className="small muted">{t.classPlain[cls]}</div></div>
+          {measured && <ClassBadge c={e.class!} />}
+          <div className="grow">
+            {measured ? <><b>{t.classShort[e.class!]}</b><div className="small muted">{t.classPlain[e.class!]}</div></> : <b>{x ? 'Fără clasă de confort' : 'Fără măsurători valide'}</b>}
+          </div>
+          <span className={`badge ${status.k}`}>{status.t}</span>
         </div>
-        <Banner kind={sure ? 'ok' : 'warn'}>
-          {sure ? `Măsurat în ${e.n_passes} treceri` : `Puține măsurători (${e.reasons.join(', ')})`}{e.last_seen ? `, ultima pe ${new Date(e.last_seen).toLocaleDateString('ro-RO')}` : ''}. Segment de {fmtLen(len)}.
-        </Banner>
+        {measured ? (
+          <Banner kind={e.status === 'MEASURED' ? 'ok' : 'warn'}>{e.status === 'MEASURED' ? `Măsurat în ${e.n_passes} treceri independente.` : `Încredere redusă: ${e.reasons.join(', ')}.`} Clasele sunt relative la turele echipei, nu o scală absolută.</Banner>
+        ) : x ? (
+          <Banner kind="info">Parcurs doar la viteză mică (~{fmt(x.speed_p50 * 3.6, 0)} km/h). Vibrația la viteză mică nu se compară cu cea la 15–20 km/h, deci nu dăm o clasă și nu influențează rutele. Arătăm valorile ca explorare.</Banner>
+        ) : null}
+        <dl className="kv">
+          <dt>RVI (mediana)</dt><dd>{measured ? fmt(e.rms_median, 2, 'm/s²') : '—'}{x ? ` · explorare: ${fmt(x.rms_p50, 2, 'm/s²')} la ~${fmt(x.speed_p50, 1, 'm/s')}` : ''}</dd>
+          <dt>segment</dt><dd>{fmtLen(len)} · {e.surface_kind ?? '—'}</dd>
+          <dt>treceri</dt><dd>{measured ? `${e.n_passes} (din ${e.n_rides} ${e.n_rides === 1 ? 'tură' : 'ture'})` : '—'}{x ? ` · lente: ${x.passes}` : ''}</dd>
+          <dt>GPS</dt><dd>{gps ? `${gps} (±${fmt(accM, 0, 'm')})` : '—'}{e.ambiguous_ratio > 0 ? ` · ${fmt(e.ambiguous_ratio * 100, 0, '%')} ambiguu carosabil/trotuar/pistă` : ''}</dd>
+          <dt>viteze măsurate</dt><dd>{measured ? `${kmh(e.speed_p10)}–${kmh(e.speed_p90)} km/h` : x ? `~${kmh(x.speed_p50)} km/h (lent)` : '—'}</dd>
+          <dt>șocuri candidate</dt><dd>{zones.length ? `${zones.length} ${zones.length === 1 ? 'zonă' : 'zone'}: ${zones.filter((z) => z.status === 'NEEDS_REVIEW').length} de verificat, ${zones.filter((z) => z.status === 'REPEATED').length} repetate, ${zones.filter((z) => (z.confirmed ?? 0) > 0).length} confirmate de tine` : 'niciuna'}</dd>
+          <dt>observații manuale</dt><dd>{manual ? `${manual} pe acest telefon (nu sunt măsurători)` : 'niciuna'}</dd>
+          <dt>sursa</dt><dd>{e.origin.map((o) => (o === 'public' ? 'date publicate de echipă' : 'turele tale (doar pe acest telefon)')).join(' + ') || '—'}</dd>
+          <dt>ultima măsurătoare</dt><dd>{e.last_seen ? new Date(e.last_seen).toLocaleDateString('ro-RO') : '—'}</dd>
+        </dl>
         <details>
-          <summary>Detalii tehnice</summary>
+          <summary>Cum se calculează</summary>
+          <p className="small">Telefonul fixat pe ghidon măsoară accelerația verticală de 100 de ori pe secundă. Pe ferestre de 2 s, la 2,5–9 m/s și cu GPS, calculăm RMS-ul vibrației (filtru trece-sus 4 Hz), apoi mediana pe segment. „Măsurat” cere ≥ 3 ferestre, ≥ 2 treceri, GPS ≤ 10 m și nicio ambiguitate cu o cale paralelă. Clasele A–E sunt percentilele 20/40/60/80 ale ferestrelor echipei ({layer.thresholds_source}).</p>
           <dl className="kv">
-            <dt>RVI</dt><dd>{fmt(e.rms_median, 2, 'm/s²')}</dd>
-            <dt>stare</dt><dd>{e.status}</dd>
             <dt>ferestre valide</dt><dd>{e.n_windows} din {e.n_windows_total}</dd>
-            <dt>ture</dt><dd>{e.n_rides}</dd>
-            <dt>viteză mediană</dt><dd>{fmt(e.speed_median, 1, 'm/s')}</dd>
-            <dt>precizie GPS</dt><dd>{fmt(e.gps_acc_median, 1, 'm')}</dd>
-            <dt>tip segment</dt><dd>{e.surface_kind ?? '—'} (OSM: {osm})</dd>
-            <dt>ambiguitate</dt><dd>{fmt(e.ambiguous_ratio * 100, 0, '%')} carosabil/trotuar</dd>
-            <dt>surse</dt><dd>{e.sources.join(', ')}</dd>
+            {x && <><dt>explorare pe viteze</dt><dd>{x.bands.map((b) => `${b.label}: ${b.n} · ${fmt(b.rms_p50, 2)}`).join('; ')}</dd></>}
+            <dt>OSM</dt><dd>{osm}</dd>
+            <dt>surse</dt><dd>{e.sources.join(', ') || '—'}</dd>
             <dt>algoritm</dt><dd>{version}</dd>
           </dl>
         </details>
