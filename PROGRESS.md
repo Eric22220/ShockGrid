@@ -15,6 +15,30 @@ Fișier de reluare: ce merge, ce a fost verificat și cum, ce nu merge. Cel mai 
 - **Zona cu șoc — „treceri”:** numărul de treceri al zonei = trecerile muchiei pe care stă (din agregarea RVI), minim numărul de detectări. Nu publicăm trasee, deci nu putem număra trecerile prin rază din snapshot.
 - **Ghidul Primăriei:** nu contrazice specificația. Notat: „treat gaps as unknown”, „Romanian first”, WCAG 2.1 AA, „private by default”, Sesizări ca unic canal pentru probleme (nu trimitem sesizări, doar link), `/api/zones` e BROWSER OK (opțional, neimplementat încă).
 
+## Prima tură reală și sprintul UniHack (14.11.2026, seara)
+Checkpoint: tag `checkpoint-before-unihack-sprint` (commit 04d529d, 170/170 teste, verificat la început).
+
+**Tura reală (iPhone 14, Sensor Logger, 41 min, bicicletă cu suport fix; fișier privat, gitignored)**
+- Exportul iOS: date în `AccelerometerUncalibrated.csv` / `GyroscopeUncalibrated.csv` (fișierele standard goale), unitate g detectată corect, 248 006 mostre la 100,2 Hz, 0 goluri; 2 479 fixuri GPS, precizie mediană 9,4 m. Importul și procesarea merg fără modificări (3,7 s în Node).
+- Viteză: 74% din fixuri la 0,5–1,5 m/s, doar ~78 s la ≥ 2,5 m/s; viteza din poziții confirmă viteza raportată. **70 de ferestre valide pentru RVI din 2 474**; 2 395 excluse pentru viteză mică (pragul NU a fost coborât), 7 pentru rotații.
+- Vibrația depinde puternic de viteză (mediana RMS ~1,1 → ~3,0 → ~8,6 m/s² la 0,5–1,5 / 2,5–4 / 4–6 m/s): justifică stratificarea, nu o normalizare inventată.
+- Studiu de caz Ioan Vidu: ~12 min pe stradă la ~0,9 m/s, 0 ferestre RVI. La aceeași viteză, vibrația pe stradă e de ×1,32 (IÎ 90% 1,08–1,51) la 0,5–1 m/s și ×1,23 (1,00–1,45) la 1–1,5 m/s față de restul turei; 38 de șocuri candidate, toate „de verificat”. OSM nu are trotuarele desenate separat, deci latura nu se poate stabili din GPS; comparația între laturi cere intervale declarate din filmare. Detalii (private): `eval/private/ANALIZA-TURA-REALA.md`.
+
+**Implementat**
+- `src/core/quality.ts` + cardul „Calitatea datelor” pe pagina turei: categorie (RVI_OK / PARTIAL_RVI / LOW_SPEED_EXPLORATORY / STATIONARY / NO_GPS / NO_MOTION), timp pe benzi de viteză, ferestre excluse pe motive, potrivire/ambiguitate, șocuri, eligibilitate publică. Cu o singură tură, bara A–E (20% pe clasă prin construcție) nu se mai afișează.
+- Explorare la viteză redusă: `EdgeAgg.explore` (separat de status/clasă/rutare), linie punctată violet pe hartă.
+- Fișa segmentului (dovezi): RVI, stare, treceri, GPS, viteze p10–p90, șocuri pe segment, observații manuale, sursa publică/locală, data.
+- „Analiză pe stradă” (`#/ride/<id>/street`): strada vs restul turei pe benzi de viteză cu IÎ bootstrap pe blocuri, harta vibrației relative, șocuri cu +mm:ss și ora (sortare după intensitate), avertismentul despre căile paralele, intervale declarate din filmare și comparația lor. Verificarea unui șoc se deschide direct (`?shock=`); tipuri noi: trecere denivelată, fisură.
+- Stratul public: fără `ride_ids` (chei de deduplicare), fără numele telefonului (nota implicită = număr de ture + platformă), raza de 250 m în jurul capetelor (și pentru geometria segmentelor), șocurile „de verificat” și explorarea excluse implicit; `build-layer` scrie implicit în `eval/private/propunere`, `audit-layer` nou. „Date și surse” arată versiunea stratului (dată și oră UTC, segmente) pentru verificarea pe două telefoane.
+- SIMULARE rutare (Instrumente avansate): strat inventat doar în memorie, router separat, insignă roșie.
+- Fix: eroare Leaflet `clearRect` la navigare rapidă (animațiile hărții se opresc înainte de eliminare).
+
+**Verificat**
+- Teste: **189/189** (19 noi în `test/unihack-evidence.test.ts`; 4 rulează pe tura reală doar local, cu `SG_REAL_RIDE`, altfel sunt sărite). `tsc` și build curate.
+- Browser (Chromium din panou, 375×812, dev server; tura reală importată local prin `<input type=file>`): pagina turei („Tură lentă · explorator”, 70/2 474), analiza pe Ion Vidu (×1,32 / ×1,23, 38 de șocuri), fișa unui segment explorat și a unuia cu încredere redusă, SIMULARE (nodata → same → better, +785 m), 0 erori în consolă la navigare rapidă prin 9 ecrane, fără derulare orizontală.
+- Auditul stratului propus: variantele „doar RVI” și „+ explorare” trec toate verificările automate; **nepublicate** (așteaptă aprobarea echipei). Ce intră și ce e exclus de raza de confidențialitate e detaliat doar în raportul privat.
+- **Neverificat:** telefoane fizice (import, analiză pe stradă, fișe), potrivirea cu filmarea, orice validare a claselor.
+
 ## Audit independent (14.11.2026, după-amiaza)
 Checkpoint: tag `checkpoint-before-independent-audit` (commit 6a56cf6, 145/145 teste). Auditul a citit tot nucleul, înregistratorul, store-ul și testele; defectele de rutare și de ceas au fost întâi reproduse prin teste care picau pe codul vechi, cel de potrivire pe străzi printr-o simulare pe graful real.
 

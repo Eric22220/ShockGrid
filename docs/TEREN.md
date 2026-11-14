@@ -19,6 +19,8 @@
 6. Mergi normal, ~15–25 km/h. Nu atinge telefonul în mers.
 7. Fiecare segment de referință (asfalt bun ~200 m, pavaj ~150 m) și fiecare traseu A→B: **de 2 ori**, cu aceeași bicicletă și același telefon. O înregistrare separată pentru fiecare, cu nume clar (ex. `AB-traseu1-dus`).
 8. Dacă vezi o problemă a drumului: **oprește-te**, apoi ShockGrid → **Raportează** (sau „Marchează pentru mai târziu”).
+9. **Dacă filmați:** la început, filmați ecranul telefonului cu Sensor Logger pornit, apoi bateți de 3 ori ferm în ghidon (din oprire). Cele 3 șocuri apar în semnal și leagă filmarea de +mm:ss din „Analiză pe stradă”. Notați din filmare intervalele „pe ce suprafață / ce latură” (ex. „trotuar nord 5:19–11:40”) și introduceți-le în Analiză pe stradă → Intervale din filmare.
+10. **Viteza:** sub ~9 km/h (2,5 m/s) vibrațiile nu intră în indicele de confort, doar în explorare. Pentru segmente măsurate, parcurgeți-le la 15–20 km/h, de 2 ori; inspecția lentă se face separat.
 
 **După fiecare înregistrare (din oprire)**
 9. Sensor Logger → **Export → ZIP** → ShockGrid → **Ture → Importă**.

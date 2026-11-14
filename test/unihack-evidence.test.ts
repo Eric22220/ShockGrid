@@ -1,6 +1,6 @@
 // Dovezi, explorare la viteză redusă, confidențialitatea stratului public, comparații pe stradă și SIMULARE.
 import { readFileSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { aggregate, buildSnapshot, inSnapshot, snapshotRideCount, toContribution } from '../src/core/aggregate';
 import { DEFAULT_CONFIG } from '../src/core/config';
 import { compareByBand, fmtOffset, parseOffset, parallelInfra, streetsOfRide, windowsInInterval } from '../src/core/corridor';
@@ -192,9 +192,13 @@ describe.skipIf(!hasFile(GRAPH))('SIMULARE pe străzile reale (strat inventat, e
 //   PowerShell: $env:SG_REAL_RIDE='rides/<fișier>.zip'; npx vitest run test/unihack-evidence.test.ts
 const REAL = process.env.SG_REAL_RIDE ?? '';
 describe.skipIf(!REAL || !hasFile(REAL) || !hasFile(GRAPH))('tura reală iPhone 14, 41 min (privată, locală)', () => {
-  const real = new Graph(JSON.parse(readFileSync(GRAPH, 'utf8')) as GraphJson);
-  const raw = parseRideFile('real.zip', readBytes(REAL));
-  const p = processRide(raw, { graph: real });
+  // citire leneșă: corpul unui describe sărit se execută totuși la colectare
+  let real!: Graph, raw!: ReturnType<typeof parseRideFile>, p!: ProcessedRide;
+  beforeAll(() => {
+    real = new Graph(JSON.parse(readFileSync(GRAPH, 'utf8')) as GraphJson);
+    raw = parseRideFile('real.zip', readBytes(REAL));
+    p = processRide(raw, { graph: real });
+  });
   it('structura exportului iOS: Uncalibrated cu date, unitate g, ~100 Hz, fără goluri', () => {
     expect(raw.meta.platform).toBe('ios');
     expect(raw.meta.accel_file).toBe('AccelerometerUncalibrated.csv');
