@@ -148,7 +148,7 @@ export async function init() {
   const saved = await idb.kvGet<Partial<Settings>>('settings');
   const rejected = (await idb.kvGet<string[]>('rejected')) ?? [];
   const ab = (await idb.kvGet<AppState['ab']>('ab')) ?? { a: null, b: null };
-  const settings: Settings = { ...defaultSettings, ...(saved ?? {}), cfg: { ...DEFAULT_CONFIG, ...(saved?.cfg ?? {}) }, route: routeOpts(saved?.route) };
+  const settings: Settings = { ...defaultSettings, ...(saved ?? {}), cfg: { ...DEFAULT_CONFIG, ...(saved?.cfg ?? {}), processing_version: DEFAULT_CONFIG.processing_version }, route: routeOpts(saved?.route) };
   const rides = (await idb.listRides()).map((r) => ({ ...r, file: null }));
   const reviews = (await idb.kvGet<Record<string, ShockReview>>('shock-reviews')) ?? {};
   const recent = (await idb.kvGet<Place[]>('recent-places')) ?? [];

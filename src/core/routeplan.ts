@@ -1,7 +1,7 @@
 // Alternativele de rută pentru ecranul Traseu și verdictul onest despre confort.
 import type { ComfortClass, ComfortLayer } from './aggregate';
 import type { Graph } from './graph';
-import { PROFILES, Router, routeStats, type ProfileKey, type RouteOptions, type RouteResult, type RouteStats } from './route';
+import { PROFILES, Router, penaltyOf, routeStats, type ProfileKey, type RouteOptions, type RouteResult, type RouteStats } from './route';
 
 export interface RouteOptionView {
   key: ProfileKey;
@@ -33,13 +33,40 @@ const MIN_GOOD_GAIN_PCT = 10;
 /** procent afișabil: o valoare între 0 și 1 nu devine „0%” */
 export const fmtPct = (p: number) => (p > 0 && p < 1 ? 'sub 1%' : `${Math.round(p)}%`);
 export const isCovered = (o: RouteOptionView) => o.s.length > 0 && o.s.measured_pct >= MIN_COVERAGE_PCT;
+/** cea mai mare parte a metrilor „măsurați” are doar încredere redusă (o trecere, puține ferestre, GPS slab/ambiguu) */
+export const mostlyLowConfidence = (o: RouteOptionView) => o.s.measured_m > 0 && o.s.low_m / o.s.measured_m > 0.5;
+const LOW_NOTE = ' Atenție: cele mai multe măsurători de aici au încredere redusă (o singură trecere sau GPS ambiguu); repetă traseul pentru un rezultat sigur.';
 
 /** Eticheta de dovezi pentru o rută: verde DOAR pentru o rută recomandată pe baza măsurătorilor. */
 export function routeEvidence(o: RouteOptionView, recommended: boolean): { tone: 'warn' | 'neutral' | 'comfort'; text: string } {
   if (o.s.measured_m <= 0) return { tone: 'warn', text: 'Confort necunoscut · nemăsurat' };
   if (!isCovered(o)) return { tone: 'warn', text: `Confort necunoscut · măsurat ${fmtPct(o.s.measured_pct)}` };
   const good = o.knownGoodPct !== null ? ` · ${Math.round(o.knownGoodPct)}% confortabil` : '';
-  return { tone: recommended ? 'comfort' : 'neutral', text: `Măsurat ${fmtPct(o.s.measured_pct)}${good}` };
+  const low = mostlyLowConfidence(o) ? ' · încredere redusă' : '';
+  return { tone: recommended ? 'comfort' : 'neutral', text: `Măsurat ${fmtPct(o.s.measured_pct)}${low}${good}` };
+}
+
+/** Cât din lungimea unei mulțimi de muchii e măsurat (MEASURED sau LOW_CONFIDENCE). */
+function coverage(g: Graph, layer: ComfortLayer | null, edges: number[], o: RouteOptions): { length: number; measured: number } {
+  let length = 0, measured = 0;
+  for (const e of edges) {
+    const L = g.length[e];
+    length += L;
+    const c = penaltyOf(g, layer, e, o).cat;
+    if (c === 'measured' || c === 'low') measured += L;
+  }
+  return { length, measured };
+}
+
+/** Porțiunile care DIFERĂ între două rute trebuie măsurate fiecare ≥ MIN_COVERAGE_PCT. Partea comună nu spune
+ * nimic despre care rută e mai bună: fără această regulă, un ocol complet nemăsurat era „recomandat” doar pentru
+ * că restul rutei (comun cu cea mai scurtă) era măsurat, iar rutarea preferă necunoscutul în locul claselor C–E. */
+export function differenceCovered(g: Graph, layer: ComfortLayer | null, alt: RouteResult, shortest: RouteResult, o: RouteOptions): boolean {
+  const inShort = new Set(shortest.edges.map((e) => e.edge)), inAlt = new Set(alt.edges.map((e) => e.edge));
+  const detour = coverage(g, layer, alt.edges.map((e) => e.edge).filter((e) => !inShort.has(e)), o);
+  const avoided = coverage(g, layer, shortest.edges.map((e) => e.edge).filter((e) => !inAlt.has(e)), o);
+  const ok = (c: { length: number; measured: number }) => c.length > 0 && (100 * c.measured) / c.length >= MIN_COVERAGE_PCT;
+  return ok(detour) && ok(avoided);
 }
 
 function isBetter(a: RouteOptionView, s: RouteOptionView): boolean {
@@ -96,20 +123,21 @@ export function planRoutes(g: Graph, layer: ComfortLayer | null, router: Router,
       verdict = { kind: 'insufficient', text: `Confort necunoscut: doar ${fmtPct(shortest.s.measured_pct)} din rută e măsurat, prea puțin pentru a compara confortul. Îți arătăm cea mai scurtă rută.` };
     }
   } else {
-    const better = coveredAlts.filter((a) => isBetter(a, shortest));
+    const better = coveredAlts.filter((a) => isBetter(a, shortest) && differenceCovered(g, layer, a.r, shortest.r, base));
     if (better.length) {
       const best = better.reduce((x, y) => (y.s.de_measured_m < x.s.de_measured_m || (y.s.de_measured_m === x.s.de_measured_m && y.s.length < x.s.length) ? y : x));
       visible = [shortest, best];
       const dl = Math.round(best.s.length - shortest.s.length);
       const dde = Math.round(shortest.s.de_measured_m - best.s.de_measured_m);
+      const low = mostlyLowConfidence(best) || mostlyLowConfidence(shortest) ? LOW_NOTE : '';
       verdict = {
         kind: 'better', best: best.key,
-        text: dde >= MIN_DE_GAIN_M
+        text: (dde >= MIN_DE_GAIN_M
           ? `${dl >= 0 ? '+' : ''}${dl} m față de cea mai scurtă, cu ${dde} m mai puțin pe segmente măsurate ca denivelate (D–E).`
-          : `${dl >= 0 ? '+' : ''}${dl} m față de cea mai scurtă; ${Math.round(best.knownGoodPct ?? 0)}% confortabil (A–B) față de ${Math.round(shortest.knownGoodPct ?? 0)}% pe porțiunile măsurate.`,
+          : `${dl >= 0 ? '+' : ''}${dl} m față de cea mai scurtă; ${Math.round(best.knownGoodPct ?? 0)}% confortabil (A–B) față de ${Math.round(shortest.knownGoodPct ?? 0)}% pe porțiunile măsurate.`) + low,
       };
     } else {
-      verdict = { kind: 'same', text: `Nu am găsit o alternativă măsurată cu mai puține vibrații. Ruta e măsurată ${fmtPct(shortest.s.measured_pct)}${shortest.knownGoodPct !== null ? `, ${Math.round(shortest.knownGoodPct)}% confortabil (A–B)` : ''}.` };
+      verdict = { kind: 'same', text: `Nu am găsit o alternativă măsurată cu mai puține vibrații. Ruta e măsurată ${fmtPct(shortest.s.measured_pct)}${shortest.knownGoodPct !== null ? `, ${Math.round(shortest.knownGoodPct)}% confortabil (A–B)` : ''}.${mostlyLowConfidence(shortest) ? LOW_NOTE : ''}` };
     }
   }
   return { options: visible, verdict };

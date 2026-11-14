@@ -290,6 +290,9 @@ export function detectShocks(raw: RawRide, sig: Signal, cfg: VibrationConfig, tr
     const main = g.eps.reduce((a, b) => (b.peak > a.peak ? b : a));
     const pos = track.at(main.tPeak, 3000);
     const speed = pos?.speed ?? null;
+    // bicicleta stă pe loc (viteză GPS cunoscută, sub prag): lovitura vine din manevrarea telefonului sau a
+    // bicicletei (semafor, atingerea ecranului, pus piciorul jos), nu din drum → nu e o denivelare candidată
+    if (speed !== null && speed < cfg.shock_min_speed) { g = null; return; }
     let double_hit = false;
     if (speed && speed > 0.5 && g.eps.length > 1) {
       const expect = cfg.wheelbase_m / speed;

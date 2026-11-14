@@ -15,6 +15,26 @@ Fișier de reluare: ce merge, ce a fost verificat și cum, ce nu merge. Cel mai 
 - **Zona cu șoc — „treceri”:** numărul de treceri al zonei = trecerile muchiei pe care stă (din agregarea RVI), minim numărul de detectări. Nu publicăm trasee, deci nu putem număra trecerile prin rază din snapshot.
 - **Ghidul Primăriei:** nu contrazice specificația. Notat: „treat gaps as unknown”, „Romanian first”, WCAG 2.1 AA, „private by default”, Sesizări ca unic canal pentru probleme (nu trimitem sesizări, doar link), `/api/zones` e BROWSER OK (opțional, neimplementat încă).
 
+## Audit independent (14.11.2026, după-amiaza)
+Checkpoint: tag `checkpoint-before-independent-audit` (commit 6a56cf6, 145/145 teste). Auditul a citit tot nucleul, înregistratorul, store-ul și testele; defectele de rutare și de ceas au fost întâi reproduse prin teste care picau pe codul vechi, cel de potrivire pe străzi printr-o simulare pe graful real.
+
+**Defecte confirmate și reparate**
+- **P0 — ocol nemăsurat „recomandat”** (`src/core/routeplan.ts`). Acoperirea de 50% se calcula pe toată ruta. Cu 900 m comuni măsurați + 100 m direcți măsurați E + un ocol de 160 m niciodată parcurs, alternativa era „măsurată 85%” și primea insigna verde, deși singura parte care diferea era necunoscută (rutarea preferă necunoscutul, P = 0,3, claselor C–E). Acum și ocolul, și porțiunea ocolită trebuie măsurate ≥ 50% (`differenceCovered`).
+- **P0 — ceasul turei live** (`src/capture/recorder.ts`). Mostrele erau datate cu `performance.timeOrigin + event.timeStamp`, ceas care nu avansează cât timp telefonul doarme (iOS Safari, Chrome pe Android), iar GPS-ul e în timp epoch. Pagină deschisă + telefon blocat 3 minute înainte de tură ⇒ toate mostrele cu 180 s în urmă: ferestre fără GPS sau, mai rău, vibrații puse pe strada de acum 3 minute. Toate testele vechi țineau cele două ceasuri identice. Acum ceasul e ancorat la `Date.now()` (decalaj = cea mai mică întârziere de livrare; salt > 2 s = reancorare, eveniment `clock_resync`). **Verificat doar prin simulare.**
+- **P0 — cale paralelă greșită fără semn de ambiguitate** (`src/core/mapmatch.ts`). Pragul max(3 m, precizie/2) era sub eroarea laterală obișnuită. Simulare pe graful real (400 de muchii cu o cale de alt tip la 4–12 m, precizie raportată 5 m): la o eroare laterală de 4 m, 17–19% din fixuri ajungeau pe calea greșită fără semn; la 6 m, 62–73%; la 8 m, 78–90%. Cu pragul nou max(6 m, 1,5 × precizia): 0%, 0–1%, 11–12%. Suprafața declarată, care înainte nu ajuta tocmai în aceste cazuri (24–35% corect la 6 m), dă acum 89–98% corect. Preț: fără suprafață declarată, mai multe segmente rămân „încredere scăzută” (în testul pe străzi reale: MEASURED 16 → 10, LOW 43 → 49).
+- **P1 — „Ai ajuns” la sute de metri de destinație** (`src/core/navprogress.ts`, nou). Sosirea era „sub 30 m rămași pe proiecția pe rută”, fără distanța reală până la destinație și fără precizia GPS: dincolo de capătul rutei apărea „Ai ajuns” împreună cu „Ești în afara rutei”. Acum: sub 30 m pe rută, sub 45 m în linie dreaptă și precizie ≤ 30 m; altfel „GPS imprecis”.
+- **P1 — „posibile denivelări” la semafor** (`src/core/vibration.ts`). Loviturile în telefon cu bicicleta oprită apăreau la verificarea de după tură. Acum un șoc cu viteză GPS cunoscută sub 1 m/s e ignorat.
+- **P1 — încrederea scăzută nedeclarată**. „Măsurat X%” includea segmentele cu o singură trecere; verdictul și eticheta spun acum „încredere redusă” când acestea sunt majoritare (`RouteStats.low_m`).
+- `processing_version` = `sg-1.1.0`; nu mai e suprascris de setările salvate.
+
+**Verificat, fără defect găsit:** conversia g ↔ m/s² cap-coadă (același semnal ca export iOS și Android: RMS identic, test nou), timpii ns peste 2^53, proiecția pe gravitație, filtrul trece-sus, RMS-ul, excluderea ferestrelor, șocurile nu intră în costul rutei (test nou), aceeași tură nu se numără de două ori (local sau snapshot), sensurile unice pe 300 de rute reale (test nou), excluderea trotuarelor, căutarea de adrese nu trimite poziția utilizatorului, niciun fișier de tură în istoricul git.
+
+**Suspectat, neconfirmat (cere ture reale):** rata de alarme false a șocurilor; pragurile claselor; comparabilitatea între telefoane și între Sensor Logger și tura live (benzi de frecvență diferite); pragul de 10 m pentru „diferență reală”; `position.timestamp` pe iOS (presupus epoch); memoria la oprirea unei ture live de peste o oră pe iPhone.
+
+**Teste:** 170/170 în 17 fișiere (25 noi, în `test/audit-*.test.ts`). `tsc` și build curate. În browser (Chromium, 375×812, GPS simulat): „Confort necunoscut · nemăsurat” pe ruta nemăsurată; „Urmărește-mă”: 946 m la start → „Ești în afara rutei” la 300 m dincolo de destinație (fără „Ai ajuns”) → „~6 m · GPS imprecis (±80 m)” → „Ai ajuns” la 8 m cu precizie 6 m; consolă fără erori.
+
+**Nevalidat fizic:** tot. Procedura cu criterii admis/respins: `docs/VERIFICARE-TEREN.md`.
+
 ## Corecturi critice înainte de demo (14.11.2026, ziua)
 Checkpoint: tag `checkpoint-before-critical-fixes`.
 

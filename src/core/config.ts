@@ -22,12 +22,18 @@ export interface VibrationConfig {
   shock_sigma_min: number; // [EXPERIMENTAL]
   shock_baseline_s: number;
   shock_cooldown_s: number;
+  /** sub această viteză (cunoscută) bicicleta stă pe loc: un „șoc” e manevrarea telefonului, nu drumul */
+  shock_min_speed: number;
   wheelbase_m: number;
   // map-matching (8.2)
   mm_max_acc: number;
   mm_min_radius: number;
   mm_heading_penalty: number;
   mm_adjacent_penalty: number;
+  /** ambiguitate carosabil/trotuar/pistă: o cale paralelă de alt tip e un rival dacă e cu cel mult
+   * max(mm_amb_min_m, mm_amb_acc_factor × precizia GPS) mai departe decât cea mai apropiată cale */
+  mm_amb_min_m: number;
+  mm_amb_acc_factor: number;
   // stări segment (6.9)
   measured_min_windows: number;
   measured_min_passes: number;
@@ -40,7 +46,7 @@ export interface VibrationConfig {
 }
 
 export const DEFAULT_CONFIG: VibrationConfig = {
-  processing_version: 'sg-1.0.0',
+  processing_version: 'sg-1.1.0',
   max_abs: 160,
   gap_ms: 100,
   min_fs: 40,
@@ -60,11 +66,14 @@ export const DEFAULT_CONFIG: VibrationConfig = {
   shock_sigma_min: 0.15,
   shock_baseline_s: 20,
   shock_cooldown_s: 0.5,
+  shock_min_speed: 1,
   wheelbase_m: 1.05,
   mm_max_acc: 20,
   mm_min_radius: 15,
   mm_heading_penalty: 20,
   mm_adjacent_penalty: 8,
+  mm_amb_min_m: 6,
+  mm_amb_acc_factor: 1.5,
   measured_min_windows: 3,
   measured_min_passes: 2,
   measured_max_acc: 10,

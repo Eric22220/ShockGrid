@@ -2,7 +2,7 @@ import { ArrowDownUp, ArrowLeft, Bike, Check, History, LocateFixed, MapPin, Navi
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { ProfileKey, RouteOptions } from '../../core/route';
 import { fmtPct, planRoutes, routeEvidence, type PlanResult, type RouteOptionView } from '../../core/routeplan';
-import { haversine, pointSegment, TM_PROJ } from '../../core/geo';
+import { navProgress } from '../../core/navprogress';
 import { requestMotionPermission } from '../../capture/recorder';
 import { geocoder, GeocodeError, buildStreetIndex, nearestStreetName, searchStreets, type Place, type StreetEntry } from '../../services/geocode';
 import { locationPermission, type LocState } from '../../services/location';
@@ -127,18 +127,7 @@ export function RouteScreen({ focus }: { focus: string | null }) {
   };
 
   // ---- navigare: distanța rămasă pe rută ----
-  const navInfo = useMemo(() => {
-    if (!nav || !loc.fix || routePts.length < 2) return null;
-    const px = TM_PROJ.x(loc.fix.lon), py = TM_PROJ.y(loc.fix.lat);
-    let best = Infinity, bi = 0, bt = 0;
-    for (let i = 0; i + 1 < routePts.length; i++) {
-      const [d, tt] = pointSegment(px, py, TM_PROJ.x(routePts[i][1]), TM_PROJ.y(routePts[i][0]), TM_PROJ.x(routePts[i + 1][1]), TM_PROJ.y(routePts[i + 1][0]));
-      if (d < best) { best = d; bi = i; bt = tt; }
-    }
-    let rem = haversine(routePts[bi][0], routePts[bi][1], routePts[bi + 1][0], routePts[bi + 1][1]) * (1 - bt);
-    for (let i = bi + 1; i + 1 < routePts.length; i++) rem += haversine(routePts[i][0], routePts[i][1], routePts[i + 1][0], routePts[i + 1][1]);
-    return { rem, off: best > Math.max(40, loc.fix.acc * 1.5), arrived: rem < 30 };
-  }, [nav, loc.fix, routePts]);
+  const navInfo = useMemo(() => (nav && loc.fix ? navProgress(routePts, loc.fix) : null), [nav, loc.fix, routePts]);
 
   return (
     <main className="screen-map" aria-label="Planificarea traseului">
@@ -175,8 +164,9 @@ export function RouteScreen({ focus }: { focus: string | null }) {
         <div className="planner" style={{ padding: 12 }}>
           <div className="grow">
             <div className="small muted">Te urmărim pe ruta spre {plan.dest?.name} · fără indicații de viraj</div>
-            <div style={{ fontSize: 22, fontWeight: 700 }}>{navInfo ? (navInfo.arrived ? 'Ai ajuns' : `${fmtLen(navInfo.rem)} · ${Math.max(1, Math.round(navInfo.rem / 250))} min`) : loc.message ?? 'Se caută poziția…'}</div>
+            <div style={{ fontSize: 22, fontWeight: 700 }}>{navInfo ? (navInfo.arrived ? 'Ai ajuns' : `${navInfo.uncertain ? '~' : ''}${fmtLen(navInfo.rem)} · ${Math.max(1, Math.round(navInfo.rem / 250))} min`) : loc.message ?? 'Se caută poziția…'}</div>
             {navInfo?.off && <div className="small" style={{ color: 'var(--warn)', fontWeight: 600 }}>Ești în afara rutei</div>}
+            {navInfo?.uncertain && <div className="small" style={{ color: 'var(--warn)', fontWeight: 600 }}>Aproape de destinație · GPS imprecis (±{Math.round(loc.fix?.acc ?? 0)} m)</div>}
           </div>
           {!followNav && <button className="icon-btn flat" onClick={() => setFollowNav(true)} aria-label="Recentrează"><LocateFixed /></button>}
           <button className="btn danger sm" onClick={() => setNav(false)}><Square /> Oprește</button>

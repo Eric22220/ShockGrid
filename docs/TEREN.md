@@ -1,5 +1,8 @@
 # Protocolul turelor de teren
 
+> **Verificarea aplicației pe telefoane, cu criterii admis/respins:** `docs/VERIFICARE-TEREN.md`. Fă întâi testele T1–T5 de acolo.
+> La fiecare import alege „Pe ce ai mers mai ales?”; harta se construiește dintr-un singur telefon și o singură metodă de înregistrare.
+
 ## Lista rapidă pentru mâine (fără laptop)
 
 **Acasă, înainte de plecare (10 min, pe iPhone)**

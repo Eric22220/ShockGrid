@@ -185,6 +185,7 @@ export interface RouteStats {
   osm_m: number;
   unknown_m: number;
   measured_m: number; // MEASURED + LOW_CONFIDENCE
+  low_m: number; // din care LOW_CONFIDENCE (o singură trecere, puține ferestre, GPS slab sau ambiguu)
   measured_pct: number;
   unknown_pct: number;
   insufficient: boolean; // < 50% din lungime măsurat (necunoscut + estimat OSM > 50%)
@@ -195,7 +196,7 @@ export interface RouteStats {
 export function routeStats(g: Graph, layer: ComfortLayer | null, r: RouteResult, o: RouteOptions): RouteStats {
   const zero = () => ({ A: 0, B: 0, C: 0, D: 0, E: 0 });
   const byClass = { measured: zero(), low: zero() };
-  let osm = 0, unknown = 0, comfort = 0, de = 0, measured = 0;
+  let osm = 0, unknown = 0, comfort = 0, de = 0, measured = 0, low = 0;
   for (const { edge } of r.edges) {
     const L = g.length[edge];
     const p = penaltyOf(g, layer, edge, o);
@@ -203,6 +204,7 @@ export function routeStats(g: Graph, layer: ComfortLayer | null, r: RouteResult,
     if ((p.cat === 'measured' || p.cat === 'low') && p.cls) {
       byClass[p.cat][p.cls] += L;
       measured += L;
+      if (p.cat === 'low') low += L;
       if (p.cls === 'D' || p.cls === 'E') de += L;
     } else if (p.cat === 'osm') osm += L;
     else unknown += L;
@@ -216,6 +218,7 @@ export function routeStats(g: Graph, layer: ComfortLayer | null, r: RouteResult,
     osm_m: osm,
     unknown_m: unknown,
     measured_m: measured,
+    low_m: low,
     measured_pct: r.length ? (100 * measured) / r.length : 0,
     unknown_pct: r.length ? (100 * unknown) / r.length : 0,
     insufficient: r.length > 0 && measured / r.length < 0.5,

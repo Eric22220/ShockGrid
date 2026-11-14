@@ -35,7 +35,11 @@ export function matchFixes(fixes: GpsFix[], graph: Graph, cfg: VibrationConfig, 
     let pool = cands;
     // ambiguitate carosabil / trotuar / pistă
     const nearest = cands[0];
-    const ambThr = Math.max(3, f.acc / 2);
+    // Pragul ține de incertitudinea reală a poziției, nu de jumătatea ei: precizia raportată e o rază de ~68%,
+    // iar eroarea laterală e de obicei constantă pe zeci de secunde. Cu vechiul prag max(3, acc/2), o eroare
+    // laterală de 4–6 m (obișnuită la acc ≈ 5 m) punea 17–70% din fixuri pe calea paralelă greșită FĂRĂ a le
+    // marca drept ambigue (simulare pe graful real al Timișoarei, piste/trotuare la 4–12 m de carosabil).
+    const ambThr = Math.max(cfg.mm_amb_min_m, cfg.mm_amb_acc_factor * f.acc);
     const rivals = cands.filter(
       (c) => c.edge !== nearest.edge && graph.kind[c.edge] !== graph.kind[nearest.edge] &&
         axialDiff(c.bearing, nearest.bearing) < 20 && Math.abs(c.dist - nearest.dist) < ambThr,

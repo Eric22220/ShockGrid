@@ -73,6 +73,8 @@ export type SourceState = 'waiting' | 'both' | 'gps_only' | 'imu_only' | 'none';
 /** cât așteptăm primul semnal înainte să spunem că o sursă lipsește */
 export const IMU_WAIT_MS = 3000;
 export const GPS_WAIT_MS = 45000;
+/** decalaj între ceasul evenimentelor și timpul real peste care considerăm că telefonul a dormit */
+export const CLOCK_RESYNC_MS = 2000;
 
 export function classifySources(imu: 'ok' | 'waiting' | 'none', gps: GpsState): SourceState {
   const imuHas = imu === 'ok';
@@ -127,6 +129,8 @@ export class Recorder {
   private pausedAt: number | null = null;
   private allTenth = true;
   private clockMode: 'event' | 'receive' = 'event';
+  /** ms adăugate la ceasul evenimentelor ca să coincidă cu timpul epoch (null până la prima mostră) */
+  private clockSkew: number | null = null;
   private unVis: (() => void) | null = null;
   private track: [number, number][] = [];
   readonly analyzer = new LiveAnalyzer();
@@ -138,10 +142,36 @@ export class Recorder {
     this.events.push({ t: this.deps.now(), type, detail });
   }
 
+  /**
+   * Timpul epoch al unei mostre. `event.timeStamp` vine din ceasul monoton al paginii (performance.now), care
+   * NU avansează cât timp telefonul doarme (iOS Safari, Chrome pe Android), pe când fixurile GPS sunt în timp
+   * epoch. Fără corecție, după orice blocare a ecranului (chiar înainte de tură, cu pagina deja deschisă)
+   * vibrațiile ar fi puse pe poziția GPS de acum N secunde, adică pe altă stradă. Păstrăm intervalele precise
+   * dintre evenimente, dar ancorăm ceasul la Date.now(): decalajul = cea mai mică întârziere de livrare văzută;
+   * un salt mai mare de CLOCK_RESYNC_MS înseamnă că telefonul a dormit și ceasul se reancorează.
+   */
+  private sampleTime(timeStamp: number): number {
+    const now = this.deps.now();
+    if (!timeStamp) { this.clockMode = 'receive'; return now; }
+    const raw = this.deps.timeOrigin + timeStamp;
+    if (this.clockSkew === null) {
+      this.clockSkew = now - raw;
+      if (Math.abs(this.clockSkew) > CLOCK_RESYNC_MS) this.ev('clock_offset', `${Math.round(this.clockSkew)} ms`);
+      return now;
+    }
+    const lag = now - (raw + this.clockSkew);
+    if (lag < 0) this.clockSkew += lag; // un eveniment nu poate veni din viitor: întârzierea reală era mai mică
+    else if (lag > CLOCK_RESYNC_MS) {
+      this.clockSkew += lag;
+      this.ev('clock_resync', `${Math.round(lag)} ms`);
+      this.problems.add('telefonul a dormit: senzorii nu s-au citit în acel interval');
+    }
+    return raw + this.clockSkew;
+  }
+
   readonly onMotion = (e: MotionLike) => {
     if (this.paused || this.stopped) return;
-    let t = e.timeStamp ? this.deps.timeOrigin + e.timeStamp : 0;
-    if (!e.timeStamp) { t = this.deps.now(); this.clockMode = 'receive'; }
+    const t = this.sampleTime(e.timeStamp);
     const g = e.accelerationIncludingGravity, a = e.acceleration, r = e.rotationRate;
     const row: RecorderMotionRow = {
       t, interval: n(e.interval),
