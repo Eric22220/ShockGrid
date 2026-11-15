@@ -45,7 +45,7 @@ jobs:
       - id: deployment
         uses: actions/deploy-pages@v4
   # Pornește publicarea ShockGrid Dev (alt repo). Opțional: are nevoie de secretul DEV_DISPATCH_TOKEN
-  # (token cu acces „Actions: write” doar la Eric22220/ShockGridDev). Fără secret, pasul e sărit.
+  # (token fine-grained doar pentru Eric22220/ShockGridDev, permisiunea „Contents: Read and write”). Fără secret, pasul e sărit.
   notify-dev:
     needs: deploy
     runs-on: ubuntu-latest
