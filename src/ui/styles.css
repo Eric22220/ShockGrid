@@ -360,3 +360,16 @@ th, td { text-align: left; padding: 8px; border-bottom: 1px solid var(--border);
 .info details > summary { cursor: pointer; font-weight: 700; font-size: 16px; min-height: 44px; display: flex; align-items: center; }
 .info details p { margin: 6px 0; }
 .info details + details { margin-top: 0; }
+
+/* ---------- rute recente ---------- */
+.hist { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 10px; }
+.hist-card { border: 1px solid var(--border); border-radius: 16px; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.hist-card + .hist-card { margin-top: 0; }
+.hist-route { font-size: 15px; line-height: 1.35; overflow-wrap: anywhere; }
+.hist-main .badge { margin-left: 8px; }
+.hist-actions { display: flex; gap: 8px; align-items: center; }
+.hist-actions .btn { flex: 1; }
+.badge.hist-arrived { background: var(--comfort-soft, var(--surface-2)); color: var(--comfort); }
+.badge.hist-interrupted { color: var(--warn); }
+.empty-hist { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 12px 0 4px; }
+.empty-hist svg { width: 32px; height: 32px; color: var(--muted); }

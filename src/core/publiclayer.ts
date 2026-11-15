@@ -6,6 +6,7 @@ import { comfortGeoJSON, zoneRows, zonesGeoJSON } from './export';
 import { haversine } from './geo';
 import type { Graph } from './graph';
 import { PRIVACY_RADIUS_M } from './publish';
+import { publicationId, type PublicationManifest } from './publication';
 import { percentileSorted } from './stats';
 import type { ProcessedRide } from './types';
 
@@ -18,7 +19,8 @@ export function teamThresholds(rides: ProcessedRide[]): { thresholds: Thresholds
 }
 
 export interface PublicLayerOptions { exploratory: boolean; shocks: 'none' | 'clean' | 'all'; radius_m?: number; note?: string; cfg?: VibrationConfig }
-export interface PublicLayerFiles { snap: Snapshot; files: Record<'comfort-layer.json' | 'comfort-layer.geojson' | 'shock-zones.json' | 'shock-zones.geojson', string> }
+export type PublicFileName = 'comfort-layer.json' | 'comfort-layer.geojson' | 'shock-zones.json' | 'shock-zones.geojson' | 'publication.json';
+export interface PublicLayerFiles { snap: Snapshot; manifest: PublicationManifest; files: Record<PublicFileName, string> }
 
 export function buildPublicLayer(rides: ProcessedRide[], graph: Graph, o: PublicLayerOptions): PublicLayerFiles {
   const cfg = o.cfg ?? DEFAULT_CONFIG;
@@ -29,14 +31,47 @@ export function buildPublicLayer(rides: ProcessedRide[], graph: Graph, o: Public
   const snap = buildSnapshot(rides, cfg, note, thresholds, source, {
     exploratory: o.exploratory, shocks: o.shocks, rules: { trim_m: cfg.publish_trim_m, radius_m: o.radius_m ?? PRIVACY_RADIUS_M }, geometry: (e) => graph.geometry(e),
   });
-  const layer = aggregate({ snapshot: snap, rides: [], surfaceKindOf: (e) => graph.kind[e] ?? null, version: 1 });
+  // versiunea = amprenta conținutului; toate fișierele o poartă, ca o combinație de versiuni să fie detectabilă
+  const pid = publicationId(snap);
+  snap.meta.publication_id = pid;
+  return { snap, ...publicFiles(snap, graph, cfg) };
+}
+
+/** fișierele publice derivate dintr-un snapshot cu ID (folosit și pentru seturi construite altfel, de ex. testul sintetic) */
+export function publicFiles(snap: Snapshot, graph: Graph, cfg: VibrationConfig = DEFAULT_CONFIG): { manifest: PublicationManifest; files: PublicLayerFiles['files'] } {
+  const pid = snap.meta.publication_id ?? publicationId(snap);
+  const layer = aggregate({ snapshot: snap, rides: [], surfaceKindOf: (e) => graph.kind[e] ?? null, version: 1, lengthOf: (e) => graph.length[e] });
+  const edges = [...layer.edges.values()];
+  const meters = (f: (e: (typeof edges)[number]) => boolean) => Math.round(edges.filter(f).reduce((a, e) => a + graph.length[e.edge_id], 0));
+  const comfort = comfortGeoJSON(layer, graph) as { properties?: Record<string, unknown> };
+  comfort.properties = { ...(comfort.properties ?? {}), publication_id: pid };
+  const zones = zonesGeoJSON(layer) as { properties?: Record<string, unknown> };
+  zones.properties = { ...(zones.properties ?? {}), publication_id: pid };
+  const manifest: PublicationManifest = {
+    publication_id: pid,
+    generated_at: snap.meta.generated_at,
+    processing_version: snap.meta.processing_version,
+    files: ['comfort-layer.json', 'comfort-layer.geojson', 'shock-zones.json', 'shock-zones.geojson', 'publication.json'],
+    counts: {
+      segments: snap.edges.length,
+      measured: edges.filter((e) => e.status === 'MEASURED').length,
+      low_confidence: edges.filter((e) => e.status === 'LOW_CONFIDENCE').length,
+      explored: edges.filter((e) => e.status === 'UNKNOWN' && !!e.explore).length,
+      // șocurile publicate sunt candidate detectate automat, niciodată „gropi confirmate”
+      hazards_unverified: layer.zones.filter((z) => z.status !== 'REJECTED').length, // zone (grupuri de vârfuri), nu vârfuri
+      hazards_verified: 0,
+      meters: meters(() => true),
+    },
+    note: snap.meta.device_note,
+  };
   return {
-    snap,
+    manifest,
     files: {
       'comfort-layer.json': JSON.stringify(snap),
-      'comfort-layer.geojson': JSON.stringify(comfortGeoJSON(layer, graph)),
-      'shock-zones.json': JSON.stringify({ meta: { license: 'ODbL-1.0', attribution: '© OpenStreetMap contributors', processing_version: cfg.processing_version }, zones: zoneRows(layer) }),
-      'shock-zones.geojson': JSON.stringify(zonesGeoJSON(layer)),
+      'comfort-layer.geojson': JSON.stringify(comfort),
+      'shock-zones.json': JSON.stringify({ meta: { license: 'ODbL-1.0', attribution: '© OpenStreetMap contributors', processing_version: cfg.processing_version, publication_id: pid }, zones: zoneRows(layer) }),
+      'shock-zones.geojson': JSON.stringify(zones),
+      'publication.json': JSON.stringify(manifest, null, 1),
     },
   };
 }

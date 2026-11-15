@@ -65,6 +65,8 @@ export interface Snapshot {
     includes_exploratory?: boolean;
     attribution: string;
     license: string;
+    /** amprenta conținutului (publicarea din ShockGrid Dev); straturile vechi nu o au */
+    publication_id?: string;
   };
   edges: SnapshotEdge[];
   shocks: SnapshotShock[];

@@ -1,6 +1,6 @@
 // Ecranul principal pentru bicicliști: harta reală pe tot ecranul, „Unde mergi?”, locația, straturi, informații,
 // „Raportează”. Fără date tehnice: detaliile (RVI, GPS, ferestre) sunt doar în ShockGrid Dev.
-import { Info, Layers, Locate, LocateFixed, LocateOff, Search, Trash2, X } from 'lucide-react';
+import { History, Info, Layers, Locate, LocateFixed, LocateOff, Search, Trash2, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { roughOf, type EdgeAgg, type ShockZone } from '../../core/aggregate';
 import type { Graph } from '../../core/graph';
@@ -12,13 +12,14 @@ import { HazardIcon } from '../components/HazardIcons';
 import { Sheet, toast } from '../kit';
 import { drawComfort, drawReports, drawZones, ROUGH_STYLE } from '../map/draw';
 import { useLocation, useMeLayer } from '../map/me';
-import { useLayerGroup, useLeaflet } from '../map/useLeaflet';
+import { alive, useLayerGroup, useLeaflet } from '../map/useLeaflet';
 import { go } from '../nav';
 import { InfoSheet } from './InfoSheet';
+import { RecentRoutes } from './RecentRoutes';
 import { CITIZEN_ROUGH, NO_DATA_TEXT } from './labels';
 import type L from 'leaflet';
 
-type Sel = { edge?: EdgeAgg; zone?: ShockZone; report?: LocalReport; layers?: true; info?: true } | null;
+type Sel = { edge?: EdgeAgg; zone?: ShockZone; report?: LocalReport; layers?: true; info?: true; history?: true } | null;
 
 let rememberLoc = false; // „Locația mea” rămâne pornită în aceeași sesiune
 let noDataDismissed = false; // mesajul „fără date” apare o singură dată pe sesiune
@@ -33,7 +34,8 @@ function dataInView(graph: Graph, edges: Iterable<EdgeAgg>, b: L.LatLngBounds, u
   return false;
 }
 
-export function CitizenMap() {
+/** `at` = „lat,lon” (linkul „Deschide ShockGrid” din Dev, spre segmentele publicate); `uncertain` = arată și datele incerte în această vizită */
+export function CitizenMap({ at, showUncertain }: { at?: string | null; showUncertain?: boolean } = {}) {
   const graph = useApp((s) => s.graph);
   const graphStatus = useApp((s) => s.graphStatus);
   const layer = useApp((s) => s.layer);
@@ -48,7 +50,11 @@ export function CitizenMap() {
   const loc = useLocation(locOn);
   const { ref, map } = useLeaflet({ onClick: () => setSel(null), onDrag: () => setFollow(false) });
   useMeLayer(map, loc, follow);
-  const uncertain = settings.showUncertain;
+  const uncertain = settings.showUncertain || !!showUncertain;
+  useEffect(() => {
+    const m = at?.match(/^(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)$/);
+    if (alive(map) && m) map.setView([Number(m[1]), Number(m[2])], 17, { animate: false });
+  }, [map, at]);
 
   useLayerGroup(map, (g) => { if (graph) drawComfort(g, graph, layer, (e) => setSel({ edge: e }), { uncertain }); }, [graph, layer, uncertain]);
   useLayerGroup(map, (g) => { if (settings.showZones) drawZones(g, layer.zones.filter((z) => z.status === 'REPEATED' || z.status === 'CANDIDATE' || (z.confirmed ?? 0) > 0), false, (z) => setSel({ zone: z })); }, [layer, settings.showZones]);
@@ -56,7 +62,8 @@ export function CitizenMap() {
 
   useEffect(() => {
     if (!map || !graph) return;
-    const check = () => setHasData(dataInView(graph, layer.edges.values(), map.getBounds(), uncertain));
+    // harta poate fi deja eliminată (schimbarea rapidă a ecranului): atunci nu citim nimic din ea
+    const check = () => { if (alive(map)) setHasData(dataInView(graph, layer.edges.values(), map.getBounds(), uncertain)); };
     check();
     map.on('moveend', check);
     return () => { map.off('moveend', check); };
@@ -82,6 +89,7 @@ export function CitizenMap() {
         <button className="search-pill" onClick={() => go('/route?focus=dest')} aria-label="Unde mergi? Caută o destinație">
           <Search aria-hidden="true" /><span>Unde mergi?</span>
         </button>
+        <button className="icon-btn" onClick={() => setSel({ history: true })} aria-label="Rute recente"><History /></button>
         <button className="icon-btn" onClick={() => setSel({ layers: true })} aria-label="Straturi și legendă"><Layers /></button>
       </div>
       <div className="map-side">
@@ -109,6 +117,7 @@ export function CitizenMap() {
         </Sheet>
       )}
       {sel?.info && <InfoSheet onClose={() => setSel(null)} />}
+      {sel?.history && <RecentRoutes onClose={() => setSel(null)} />}
       {sel?.edge && graph && <EdgeSheet e={sel.edge} name={graph.name[sel.edge.edge_id] || 'Stradă fără nume'} onClose={() => setSel(null)} />}
       {sel?.zone && (
         <Sheet title="Șocuri pe drum" onClose={() => setSel(null)}>

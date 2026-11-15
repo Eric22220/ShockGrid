@@ -15,6 +15,9 @@ import {
 } from '../core/route';
 import type { DeclaredSurface, ProcessedRide } from '../core/types';
 import * as idb from '../storage/idb';
+import { IS_DEV_APP, LIVE_BASE } from '../appkind';
+import { parseSnapshot, snapshotVersion } from '../core/publication';
+import { deleteRoute, finishRoute, HISTORY_KEY, recoverRoutes, startRoute, type RouteEntry } from '../services/history';
 import { processInWorker } from '../worker/client';
 import type { Place } from '../services/geocode';
 import { createReport, shockKey, type ReviewAnswer, type ShockReview } from '../services/reports';
@@ -61,11 +64,15 @@ export interface AppState {
   reports: idb.LocalReport[];
   reviews: Record<string, ShockReview>;
   recent: Place[];
+  /** rutele pornite din aplicație (doar pe acest telefon) */
+  routeHistory: RouteEntry[];
   plan: Plan;
   graph: Graph | null;
   graphStatus: 'loading' | 'ready' | 'missing' | 'error';
   snapshot: Snapshot | null;
   snapshotStatus: 'loading' | 'ready' | 'missing';
+  /** ultima verificare reușită a stratului publicat (ms) */
+  snapshotCheckedAt: number | null;
   rides: idb.StoredRide[];
   layer: ComfortLayer;
   lastImport: ImportReport | null;
@@ -95,11 +102,13 @@ let state: AppState = {
   reports: [],
   reviews: {},
   recent: [],
+  routeHistory: [],
   plan: { origin: null, dest: null },
   graph: null,
   graphStatus: 'loading',
   snapshot: null,
   snapshotStatus: 'loading',
+  snapshotCheckedAt: null,
   rides: [],
   layer: aggregate({ rides: [], version: 0 }),
   lastImport: null,
@@ -153,6 +162,32 @@ export const lengthOf = (e: number) => state.graph?.length[e] ?? 0;
 export function _testSetGraph(g: Graph | null) { set({ graph: g, graphStatus: g ? 'ready' : 'missing' }); router = null; compCache = null; }
 
 // ---------------- inițializare ----------------
+let snapshotWatch = false;
+/** de unde citim stratul publicat: aplicația pentru bicicliști din propriul site; Dev din site-ul LIVE al bicicliștilor
+ * (copia din build-ul Dev poate fi mai veche), cu revenire la propria copie */
+const SNAPSHOT_URLS = IS_DEV_APP ? [`${LIVE_BASE}data/comfort-layer.json`, `${BASE}data/comfort-layer.json`] : [`${BASE}data/comfort-layer.json`];
+
+/**
+ * Citește stratul publicat (revalidare HTTP; service worker-ul ține ultima versiune pentru offline). Un răspuns
+ * stricat sau lipsă NU șterge stratul deja încărcat. Întoarce true dacă s-a încărcat o versiune nouă.
+ */
+export async function refreshSnapshot(fetcher: typeof fetch = fetch): Promise<boolean> {
+  for (const url of SNAPSHOT_URLS) {
+    try {
+      const r = await fetcher(url, { cache: 'no-cache' });
+      if (!r.ok || !(r.headers.get('content-type') ?? '').includes('json')) continue;
+      const snap = parseSnapshot(await r.json());
+      if (!snap) continue;
+      const changed = snapshotVersion(snap) !== snapshotVersion(state.snapshot);
+      if (changed) { set({ snapshot: snap, snapshotStatus: 'ready', snapshotCheckedAt: Date.now() }); recompute(); }
+      else set({ snapshotStatus: 'ready', snapshotCheckedAt: Date.now() });
+      return changed;
+    } catch { /* încercăm următoarea sursă; fără rețea păstrăm ce avem */ }
+  }
+  if (!state.snapshot) set({ snapshotStatus: 'missing' });
+  return false;
+}
+
 export async function init() {
   const saved = await idb.kvGet<Partial<Settings>>('settings');
   const rejected = (await idb.kvGet<string[]>('rejected')) ?? [];
@@ -161,18 +196,22 @@ export async function init() {
   const rides = (await idb.listRides()).map((r) => ({ ...r, file: null }));
   const reviews = (await idb.kvGet<Record<string, ShockReview>>('shock-reviews')) ?? {};
   const recent = (await idb.kvGet<Place[]>('recent-places')) ?? [];
+  // o navigare rămasă activă la închiderea aplicației devine „întreruptă” (nu „terminată”)
+  const rawHistory = await idb.kvGet<unknown>(HISTORY_KEY);
+  const routeHistory = recoverRoutes(rawHistory);
+  if (JSON.stringify(routeHistory) !== JSON.stringify(rawHistory ?? [])) await idb.kvSet(HISTORY_KEY, routeHistory).catch(() => {});
   const plan = (await idb.kvGet<Plan>('plan')) ?? { origin: null, dest: null };
-  set({ settings, rejected, ab, rides, reviews, recent, plan, reports: await idb.listReports() });
+  set({ settings, rejected, ab, rides, reviews, recent, routeHistory, plan, reports: await idb.listReports() });
   recompute(rides);
   set({ ready: true });
 
   const okJson = (r: Response) => (r.ok && (r.headers.get('content-type') ?? '').includes('json') ? r.json() : null);
-  const snapP = fetch(`${BASE}data/comfort-layer.json`, { cache: 'no-cache' })
-    .then(okJson)
-    .then((snap: Snapshot | null) => {
-      set({ snapshot: snap && Array.isArray(snap.edges) ? snap : null, snapshotStatus: snap ? 'ready' : 'missing' });
-    })
-    .catch(() => set({ snapshotStatus: 'missing' }));
+  const snapP = refreshSnapshot();
+  if (typeof document !== 'undefined' && !snapshotWatch) {
+    // la revenirea în aplicație: există o versiune nouă a stratului publicat?
+    snapshotWatch = true;
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') void refreshSnapshot(); });
+  }
   fetch(`${BASE}data/eval-latest.json`, { cache: 'no-cache' }).then(okJson).then((e) => set({ evalResults: e })).catch(() => {});
   const graphP = fetch(`${BASE}data/graph-timisoara.json`)
     .then(async (r) => {
@@ -370,7 +409,7 @@ export async function rejectZone(memberIds: string[], reject: boolean) {
 
 export async function wipeAll() {
   await idb.clearAll();
-  set({ rides: [], rejected: [], lastImport: null, ab: { a: null, b: null }, settings: defaultSettings, reports: [], reviews: {}, recent: [], plan: { origin: null, dest: null } });
+  set({ rides: [], rejected: [], lastImport: null, ab: { a: null, b: null }, settings: defaultSettings, reports: [], reviews: {}, recent: [], routeHistory: [], plan: { origin: null, dest: null } });
   recompute([]);
 }
 
@@ -464,3 +503,18 @@ export async function clearRecent() {
   set({ recent: [] });
   await idb.kvSet('recent-places', []).catch(() => {});
 }
+
+// ---------------- istoricul rutelor (doar local) ----------------
+async function saveHistory(routeHistory: RouteEntry[]) {
+  set({ routeHistory });
+  await idb.kvSet(HISTORY_KEY, routeHistory).catch(() => {});
+}
+/** „Pornește”: întoarce ID-ul intrării active */
+export async function historyStart(i: Parameters<typeof startRoute>[1]): Promise<string> {
+  const { list, entry } = startRoute(state.routeHistory, i);
+  await saveHistory(list);
+  return entry.id;
+}
+export async function historyFinish(id: string, how: 'ended' | 'arrived') { await saveHistory(finishRoute(state.routeHistory, id, how)); }
+export async function historyDelete(id: string) { await saveHistory(deleteRoute(state.routeHistory, id)); }
+export async function historyClear() { await saveHistory([]); }

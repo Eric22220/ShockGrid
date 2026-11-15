@@ -6,7 +6,7 @@ import { navProgress } from '../../core/navprogress';
 import { geocoder, GeocodeError, buildStreetIndex, nearestStreetName, searchStreets, type Place, type StreetEntry } from '../../services/geocode';
 import { locationPermission, type LocState } from '../../services/location';
 import { ReportButton, type ReportHooks } from '../components/QuickReport';
-import { addRecent, clearRecent, getRouter, setPlan, snapNode, updateSettings, useApp } from '../../state/store';
+import { addRecent, clearRecent, getRouter, historyFinish, historyStart, setPlan, snapNode, updateSettings, useApp } from '../../state/store';
 import { t } from '../../i18n/ro';
 import { CLASS_COLORS, fmtLen } from '../format';
 import { Banner, SnapSheet, toast, useDebounced, type Snap } from '../kit';
@@ -127,13 +127,20 @@ export function RouteScreen({ focus, tech }: { focus: string | null; tech?: NavT
 
   const [navStart, setNavStart] = useState(0);
   const [stopping, setStopping] = useState<string | null>(null);
+  const navEntry = useRef<string | null>(null);
   const startNav = () => {
     tech?.onStart(plan.dest?.name ?? 'destinație'); // Dev: pornește și măsurarea, dacă e activată
+    // istoricul local: ce rută a pornit utilizatorul (fără traseu GPS și fără măsurători)
+    if (plan.origin && plan.dest && chosen) {
+      const at = plan.origin.kind === 'mylocation' ? (originFix ? { lat: originFix[0], lon: originFix[1] } : null) : null;
+      void historyStart({ origin: plan.origin, originAt: at, dest: plan.dest, distance_m: chosen.s.length, minutes: chosen.s.minutes }).then((id) => { navEntry.current = id; });
+    }
     setNav(true);
     setFollowNav(true);
     setNavStart(Date.now());
   };
   const endNav = async () => {
+    if (navEntry.current) { void historyFinish(navEntry.current, 'ended'); navEntry.current = null; }
     if (tech?.isActive()) {
       setStopping('Se salvează…');
       try { await tech.onStop((stage) => setStopping(stage)); } finally { setStopping(null); }
@@ -145,6 +152,8 @@ export function RouteScreen({ focus, tech }: { focus: string | null; tech?: NavT
 
   // ---- navigare: distanța rămasă pe rută ----
   const navInfo = useMemo(() => (nav && loc.fix ? navProgress(routePts, loc.fix) : null), [nav, loc.fix, routePts]);
+  // sosirea detectată de GPS (aceeași logică ca afișarea „Ai ajuns”) marchează ruta ca „ajuns”
+  useEffect(() => { if (navInfo?.arrived && navEntry.current) void historyFinish(navEntry.current, 'arrived'); }, [navInfo?.arrived]);
 
   return (
     <main className="screen-map" aria-label="Planificarea traseului">

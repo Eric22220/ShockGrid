@@ -8,3 +8,5 @@ export const IS_DEV_APP = env?.MODE === 'devapp';
 export const DB_NAME = IS_DEV_APP ? 'shockgrid-dev' : 'shockgrid';
 /** baza aplicației pentru bicicliști, citită (doar citire) de Dev la copierea turelor existente */
 export const CITIZEN_DB_NAME = 'shockgrid';
+/** adresa publică a aplicației pentru bicicliști (de aici citește Dev stratul publicat și verifică publicarea) */
+export const LIVE_BASE = 'https://eric22220.github.io/ShockGrid/';

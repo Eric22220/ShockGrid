@@ -27,7 +27,7 @@ function reachable(entry: string): Set<string> {
   return seen;
 }
 const rel = (s: Set<string>) => [...s].map((f) => f.replace(/\\/g, '/').replace(/^.*\/src\//, 'src/'));
-const DEV_ONLY = ['src/dev/', 'src/capture/', 'src/services/ride', 'src/ui/charts/', 'src/core/publiclayer', 'src/storage/migrate'];
+const DEV_ONLY = ['src/dev/', 'src/capture/', 'src/services/ride', 'src/ui/charts/', 'src/core/publiclayer', 'src/core/github', 'src/storage/migrate'];
 /** singurele ecrane din src/ui/pages folosite de aplicația pentru bicicliști */
 const CITIZEN_PAGES = ['src/ui/pages/RouteScreen.tsx'];
 

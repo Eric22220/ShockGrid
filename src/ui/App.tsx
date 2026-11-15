@@ -22,7 +22,7 @@ export function App() {
   switch (base) {
     case 'route': page = <RouteScreen focus={params.get('focus')} />; break;
     case 'report': page = <PlaceReport type={params.get('type')} why={params.get('why')} />; break;
-    default: page = <CitizenMap />; // inclusiv linkurile vechi (#/more, #/rides…): duc la hartă
+    default: page = <CitizenMap at={params.get('at')} showUncertain={params.get('uncertain') === '1'} />; // inclusiv linkurile vechi (#/more, #/rides…): duc la hartă
   }
   return (
     <div className={`app citizen tiles-${mapStyle}`}>
