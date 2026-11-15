@@ -1,0 +1,22 @@
+{
+ "publication_id": "pub-3048a6a3caf12bd21b7c",
+ "generated_at": "2026-11-15T09:21:19.367Z",
+ "processing_version": "sg-1.2.0",
+ "files": [
+  "comfort-layer.json",
+  "comfort-layer.geojson",
+  "shock-zones.json",
+  "shock-zones.geojson",
+  "publication.json"
+ ],
+ "counts": {
+  "segments": 2,
+  "measured": 0,
+  "low_confidence": 2,
+  "explored": 0,
+  "hazards_unverified": 2,
+  "hazards_verified": 0,
+  "meters": 220
+ },
+ "note": "1 tură (ios)"
+}
