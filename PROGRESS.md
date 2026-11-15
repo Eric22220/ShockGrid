@@ -15,6 +15,14 @@ Fișier de reluare: ce merge, ce a fost verificat și cum, ce nu merge. Cel mai 
 - **Zona cu șoc — „treceri”:** numărul de treceri al zonei = trecerile muchiei pe care stă (din agregarea RVI), minim numărul de detectări. Nu publicăm trasee, deci nu putem număra trecerile prin rază din snapshot.
 - **Ghidul Primăriei:** nu contrazice specificația. Notat: „treat gaps as unknown”, „Romanian first”, WCAG 2.1 AA, „private by default”, Sesizări ca unic canal pentru probleme (nu trimitem sesizări, doar link), `/api/zones` e BROWSER OK (opțional, neimplementat încă).
 
+## Publicare Dev → ShockGrid dintr-un clic și „Rute recente” (15.11.2026)
+Checkpoint: tag `checkpoint-before-publication`.
+- **Publicarea reală** din ShockGrid Dev → Strat public: date → generare + audit → previzualizare pe hartă cu diferența → aprobare explicită → „Publică pe ShockGrid” (commit atomic prin API-ul GitHub, token doar în memorie) → urmărirea deploy-ului → verificare pe site-ul live. Detalii și autorizare: `docs/PUBLICARE.md`.
+- Verificat cap-coadă pe site-urile reale cu un set SINTETIC marcat TEST (commit `4042e54`, live în ~47 s, vizibil pe hartă), apoi eliminat (revert `7f01d8c`). Tura reală nu e publicată (așteaptă acordul).
+- Aplicația pentru bicicliști citește stratul tolerant (un fișier stricat sau lipsa rețelei nu șterg datele) și verifică o versiune nouă la revenirea în aplicație; linkul „Deschide ShockGrid” din Dev duce la segmentele publicate (`#/?at=lat,lon&uncertain=1`).
+- **Rute recente** (iconița cu ceas de lângă „Unde mergi?”): pornire / oprire / sosire / întreruptă, max. 20, „Folosește din nou” de la poziția curentă, ștergere; doar în IndexedDB (`route-history`).
+- Teste: 240 publice + 6 locale; noi: `test/publication.test.ts` (14), `test/route-history.test.ts` (7).
+
 ## Aplicația pentru bicicliști redusă la esențial (15.11.2026, ShockGrid_task.md)
 Checkpoint: tag `checkpoint-before-citizen-ux`.
 - **ShockGrid (bicicliști)** = un singur ecran: harta reală pe tot ecranul, „Unde mergi?” (căutarea se deschide mereu), locația, Straturi, Informații, „Raportează”. Fără bară de meniu: au dispărut „Mai mult”, „Ture”, „Traseu” ca tab, înregistrarea, importul, întrebările de după tură, contribuția cu măsurători, setările tehnice. Componente noi în `src/ui/citizen/` (CitizenMap, PlaceReport, InfoSheet).

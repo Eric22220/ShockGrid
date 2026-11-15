@@ -1,0 +1,30 @@
+# Publicarea stratului public: ShockGrid Dev → ShockGrid
+
+Din site-ul tehnic (https://eric22220.github.io/ShockGridDev/) direct în aplicația pentru bicicliști (https://eric22220.github.io/ShockGrid/), fără descărcări, VS Code sau git.
+
+## Cum funcționează
+1. **ShockGrid Dev → Strat public**: turele active din browser → **Generează și auditează** (același generator și audit ca `npm run build-layer` / `audit-layer`, `src/core/publiclayer.ts`) + validarea structurii (`src/core/publication.ts`). La FAIL, publicarea e blocată și motivele sunt listate.
+2. **Previzualizare** pe harta reală: segmentele propuse (culoare = confort, întrerupt = incert), stratul publicat acum, segmentele excluse; diferența: noi / actualizate / neschimbate / dispar.
+3. **Aprobare**: lista exactă de fișiere și versiunea; bifa „Confirm că am dreptul să public…” și, dacă există date incerte, un acord separat.
+4. **Publică pe ShockGrid**: un singur commit în `Eric22220/ShockGrid` (`public/data/`: `comfort-layer.json`, `.geojson`, `shock-zones.json`, `.geojson`, `publication.json`), prin API-ul GitHub: blob-uri → tree → commit → actualizarea ramurii `main` **fără force** (`src/core/github.ts`).
+5. **Deploy**: push-ul pornește `deploy.yml` (teste + build + GitHub Pages).
+6. **Verificare live**: pagina citește `https://eric22220.github.io/ShockGrid/data/comfort-layer.json` ocolind cache-urile și arată „Publicat” doar când versiunea (`publication_id`) și numărul de segmente coincid.
+
+Siguranță: versiunea = amprenta conținutului, deci o a doua publicare cu același conținut nu creează alt commit. Dacă stratul publicat s-a schimbat după previzualizare, publicarea e refuzată (conflict) și nu suprascrie nimic. Toate fișierele poartă aceeași versiune, iar aplicația pentru bicicliști citește doar `comfort-layer.json`; nu poate vedea o combinație de versiuni. Revenire: `git revert <commit>` (fiecare publicare e un commit cu versiunea în mesaj).
+
+## Autorizarea (token GitHub)
+Site-ul Dev e public și nu are autentificare proprie: doar cine are un token GitHub valid poate publica.
+1. https://github.com/settings/personal-access-tokens/new: **Fine-grained token**, expirare **1 zi**.
+2. **Repository access → Only select repositories → Eric22220/ShockGrid**.
+3. **Permissions → Repository → Contents: Read and write**. Nimic altceva (Metadata: Read se adaugă automat).
+4. Copiază tokenul în câmpul de la pasul 5 și apasă **Publică pe ShockGrid**.
+
+Tokenul stă doar în memoria paginii, pe durata publicării: câmpul se golește la apăsare. Nu e salvat (fără localStorage, IndexedDB sau cookie), nu apare în URL sau în mesajele de eroare și nu e trimis nicăieri în afară de `api.github.com`. Revocă-l după demo (aceeași pagină din setările GitHub).
+
+## Ce se publică și ce nu
+- Da: valori agregate pe segmente de stradă (RMS, viteză, precizie GPS, treceri, poziția pe segment rotunjită), data fără oră, zone cu șocuri **neverificate** (doar cele cu context bun, dacă e bifat), numărul de ture, platformele.
+- Nu: fișiere ZIP, trasee, ore, ID-uri de tură sau de telefon, nume de fișiere sau de dispozitive, primii/ultimii 200 m ai turei și nimic la mai puțin de 250 m de capete.
+- Rapoartele făcute în aplicația pentru bicicliști rămân pe telefonul fiecăruia; nu se publică.
+
+## Verificare cap-coadă (făcută pe 15.11.2026)
+`GH_TOKEN=… npx tsx scripts/e2e-publish.ts`: un set **SINTETIC** marcat „TEST” (2 segmente pe Bulevardul Revoluției din 1989), publicat cu același cod. Commit `4042e54`; site-ul live a servit versiunea `pub-d72bcbabe6398088aa27` după ~47 s, iar harta aplicației a afișat cele 2 segmente. Setul a fost eliminat apoi prin revert (`7f01d8c`). Tura reală **nu** a fost publicată.

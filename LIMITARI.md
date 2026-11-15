@@ -61,6 +61,12 @@ Trei lucruri separate: **rugozitatea continuă** (RMS pe ferestre de 2 s, singur
 - Graful nu păstrează etichetele `vehicle=*`, restricțiile orare sau `access=no` + `bicycle=yes` (căile cu `access=no/private` sunt eliminate la construirea grafului). Etichetele OSM pot fi greșite sau incomplete: **nu e o verificare juridică**; urmează semnalizarea de pe teren.
 - Fără navigație pas cu pas.
 
+## Despre publicarea din ShockGrid Dev (15.11.2026)
+- Publicarea cere un token GitHub fine-grained (Contents: Read and write, doar Eric22220/ShockGrid). Nu există login în site; cine are tokenul poate publica. Tokenul nu se salvează.
+- O publicare **înlocuiește** stratul public cu cel generat din turele din browserul publicatorului; turele publicate anterior care nu sunt în acel browser dispar (previzualizarea arată câte). Nu există încă îmbinarea straturilor.
+- După commit, site-ul se actualizează după deploy (de obicei 1–3 minute; GitHub Pages poate întârzia). Aplicația pentru bicicliști vede versiunea nouă la pornire sau la revenirea în aplicație.
+- Datele incerte (o singură trecere) apar la bicicliști doar la Straturi → „Date incerte”; rutele nu le folosesc ca dovadă că o variantă e mai confortabilă.
+
 ## Despre cele două site-uri (15.11.2026)
 - **ShockGrid Dev e public și neautentificat.** Oricine are adresa îl poate deschide; nu conține date private, iar ce importă cineva rămâne în browserul lui. Nu există login (unul doar în frontend ar fi o falsă securitate).
 - Ambele site-uri sunt pe aceeași origine (eric22220.github.io): bazele IndexedDB sunt separate prin nume, dar orice pagină de pe origine le-ar putea citi tehnic. De aceea Dev citește baza bicicliștilor doar la cererea explicită („Copiază în Dev”).
