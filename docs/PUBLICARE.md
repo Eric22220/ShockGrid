@@ -17,9 +17,20 @@ Site-ul Dev e public și nu are autentificare proprie: doar cine are un token Gi
 1. https://github.com/settings/personal-access-tokens/new: **Fine-grained token**, expirare **1 zi**.
 2. **Repository access → Only select repositories → Eric22220/ShockGrid**.
 3. **Permissions → Repository → Contents: Read and write**. Nimic altceva (Metadata: Read se adaugă automat).
-4. Copiază tokenul în câmpul de la pasul 5 și apasă **Publică pe ShockGrid**.
+4. Copiază tokenul în câmpul de la pasul 5 și apasă **Testează conexiunea GitHub**. Testul nu modifică nimic: verifică rețeaua, tokenul, accesul la repo, ramura `main`, permisiunea de scriere (un blob gol, respins de GitHub cu 422, deci nu se creează nimic) și stratul publicat acum. Fiecare etapă apare cu codul HTTP.
+5. Apasă **Publică pe ShockGrid**.
 
-Tokenul stă doar în memoria paginii, pe durata publicării: câmpul se golește la apăsare. Nu e salvat (fără localStorage, IndexedDB sau cookie), nu apare în URL sau în mesajele de eroare și nu e trimis nicăieri în afară de `api.github.com`. Revocă-l după demo (aceeași pagină din setările GitHub).
+Tokenul stă doar în memoria paginii (starea componentei). Nu e salvat (fără localStorage, sessionStorage, IndexedDB sau cookie), nu apare în URL sau în mesajele de eroare și nu e trimis nicăieri în afară de `api.github.com`. După o eroare **rămâne în câmp**, ca să poți reîncerca; se șterge după publicarea confirmată pe site-ul live, la **Șterge tokenul** sau când părăsești pagina. Revocă-l după demo (aceeași pagină din setările GitHub).
+
+## Mesaje de eroare (etapa + codul HTTP)
+- **Conexiunea la api.github.com**, fără cod HTTP: telefonul nu are internet sau un VPN/filtru blochează GitHub.
+- **„browserul a blocat cererea cu token”**: GitHub răspunde la o cerere simplă, dar nu la cea autentificată (blocator de conținut, VPN/filtru care modifică cererile sau CORS).
+- **HTTP 401**: token greșit, incomplet sau expirat. **HTTP 403**: lipsește „Contents: Read and write”. **HTTP 404**: tokenul nu are acces la Eric22220/ShockGrid.
+- **HTTP 409** sau „not a fast forward”: ramura `main` s-a schimbat în timpul publicării; nu se suprascrie nimic, se poate reîncerca. **HTTP 422**: cerere nevalidă (cu mesajul GitHub).
+- **Deploy (GitHub Pages)** / **Verificarea pe site-ul live**: commitul există, dar site-ul nu arată (încă) versiunea; o nouă apăsare pe Publică nu creează alt commit.
+
+## Cauza eșecului de pe iPhone (15.11.2026)
+Publicarea din browser eșua cu „Nu am putut contacta GitHub (fără internet?)” pe **orice** browser, nu doar pe iPhone. `GitHubClient` apela `this.f(url)` cu `f = window.fetch`; un `fetch` nativ apelat ca metodă a altui obiect aruncă înainte de a trimite cererea („Can only call Window.fetch on instances of Window” în Safari/WebKit, „Illegal invocation” în Chrome). Codul prindea orice excepție și o afișa ca lipsă de internet. Verificarea din terminal (Node) și testele cu `fetch` simulat nu verifică `this`, deci nu au prins eroarea. Am reprodus-o în WebKit 18.2 (Playwright, user-agent de iPhone) și în Chromium, contra api.github.com real, cu un token fals. Codul vechi a dat „fără internet”, iar codul corectat primește răspunsul real de la GitHub (HTTP 401). Tot atunci am verificat că GitHub acceptă CORS pentru GET, POST și PATCH cu `Authorization`, `X-GitHub-Api-Version` și `Content-Type`. Ipoteza CORS/`Cache-Control` **nu** era cauza (WebKit 18.2 a primit 401 și cu `cache: 'no-store'`); opțiunea `cache` a fost totuși scoasă din cererile către GitHub, iar prospețimea e asigurată prin URL unic. Testele de regresie (`test/publish-mobile.test.ts`) folosesc acum un `fetch` care se comportă ca cel nativ și `fetch`-ul global implicit.
 
 ## Ce se publică și ce nu
 - Da: valori agregate pe segmente de stradă (RMS, viteză, precizie GPS, treceri, poziția pe segment rotunjită), data fără oră, zone cu șocuri **neverificate** (doar cele cu context bun, dacă e bifat), numărul de ture, platformele.

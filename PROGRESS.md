@@ -15,6 +15,13 @@ Fișier de reluare: ce merge, ce a fost verificat și cum, ce nu merge. Cel mai 
 - **Zona cu șoc — „treceri”:** numărul de treceri al zonei = trecerile muchiei pe care stă (din agregarea RVI), minim numărul de detectări. Nu publicăm trasee, deci nu putem număra trecerile prin rază din snapshot.
 - **Ghidul Primăriei:** nu contrazice specificația. Notat: „treat gaps as unknown”, „Romanian first”, WCAG 2.1 AA, „private by default”, Sesizări ca unic canal pentru probleme (nu trimitem sesizări, doar link), `/api/zones` e BROWSER OK (opțional, neimplementat încă).
 
+## P0: publicarea din browser (iPhone) reparată (15.11.2026)
+Checkpoint: tag `checkpoint-before-mobile-publish-fix`.
+- **Cauza** (reprodusă în WebKit 18.2 și Chromium reale, contra api.github.com): `GitHubClient` apela `this.f(url)` cu `f = window.fetch`; fetch-ul nativ apelat ca metodă aruncă înainte de a trimite cererea („Can only call Window.fetch on instances of Window” / „Illegal invocation”), iar eroarea era afișată ca „fără internet”. Afecta orice browser; testul din terminal (Node) și testele cu fetch simulat nu o puteau prinde. CORS nu era cauza.
+- **Reparat**: fetch apelat corect (`callableFetch`); fără opțiunea `cache` spre GitHub (URL unic); diagnostic pe etape cu cod HTTP (rețea / blocat de browser / 401 / 403 / 404 / 409 / 422 / limită / deploy / verificare); curățarea tokenului lipit (spații, caractere invizibile).
+- **Testează conexiunea GitHub** (fără modificări; scrierea e verificată cu un blob gol respins cu 422). Tokenul rămâne în memorie după o eroare (reîncercare), se șterge la confirmare, la „Șterge tokenul” sau la ieșirea din pagină.
+- Teste noi: `test/publish-mobile.test.ts` (fetch care se comportă ca cel nativ, fetch global implicit, antete CORS, token, diagnostic). Detalii: `docs/PUBLICARE.md`.
+
 ## Publicare Dev → ShockGrid dintr-un clic și „Rute recente” (15.11.2026)
 Checkpoint: tag `checkpoint-before-publication`.
 - **Publicarea reală** din ShockGrid Dev → Strat public: date → generare + audit → previzualizare pe hartă cu diferența → aprobare explicită → „Publică pe ShockGrid” (commit atomic prin API-ul GitHub, token doar în memorie) → urmărirea deploy-ului → verificare pe site-ul live. Detalii și autorizare: `docs/PUBLICARE.md`.

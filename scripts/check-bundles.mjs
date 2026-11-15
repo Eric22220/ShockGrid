@@ -17,6 +17,9 @@ ok(JSON.parse(readFileSync('dist/manifest.webmanifest', 'utf8')).scope === '/Sho
 if (existsSync('dist-dev')) {
   const dev = text('dist-dev');
   for (const m of ['Generează și auditează', 'Parametri algoritm', 'Date tehnice (Dev)', 'Măsoară vibrațiile', 'devicemotion', 'Zone de verificat', 'Importă din Sensor Logger', 'Publică pe ShockGrid', 'api.github.com']) ok(dev.includes(m), `dist-dev/ conține „${m}”`);
+  ok(dev.includes('Testează conexiunea GitHub') && !dev.includes("Nu am putut contacta GitHub (fără internet?)"), 'Dev are testul de conexiune GitHub și diagnosticul nou (fără vechiul „fără internet?”)');
+  // cererile către api.github.com au doar antete permise de CORS (fără opțiunea cache: WebKit ar adăuga Cache-Control/Pragma)
+  ok(!/api\.github\.com[^"`]{0,400}cache:"no-(store|cache)"/.test(dev) && !/cache:"no-(store|cache)"[^"`]{0,120}api\.github\.com/.test(dev), 'cererile către api.github.com nu folosesc opțiunea cache');
   const html = readFileSync('dist-dev/index.html', 'utf8');
   ok(html.includes('/ShockGridDev/assets/') && !html.includes('"/ShockGrid/assets/'), 'dist-dev/ servit sub /ShockGridDev/');
   ok(html.includes('ShockGrid Dev'), 'titlul ShockGrid Dev');

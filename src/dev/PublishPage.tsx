@@ -1,10 +1,12 @@
 // ShockGrid Dev → „Strat public”: date → generare + audit → previzualizare pe hartă → aprobare explicită →
 // publicare reală în repo-ul ShockGrid (un commit atomic prin API-ul GitHub) → verificare pe site-ul LIVE.
-// Tokenul GitHub stă doar în memoria acestei pagini, pe durata publicării; nu se salvează nicăieri.
+// Tokenul GitHub stă doar în memoria acestei pagini (starea componentei): nu se salvează nicăieri (fără localStorage,
+// sessionStorage, IndexedDB, cookie sau URL). Rămâne după o eroare, pentru reîncercare; se șterge după publicarea
+// confirmată, la „Șterge tokenul” sau la ieșirea din pagină.
 import { CheckCircle2, Circle, Download, ExternalLink, FileCheck2, Loader2, ShieldCheck, Upload, XCircle } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { aggregate, snapshotRideCount, type Snapshot } from '../core/aggregate';
-import { checkLive, deployStatus, GhError, LIVE_BASE, publishToGitHub, TARGET, type PublishStep } from '../core/github';
+import { checkLive, deployStatus, GhError, LIVE_BASE, publishToGitHub, STAGE_LABEL, TARGET, testConnection, type ConnResult, type GhStage, type PublishStep } from '../core/github';
 import { diffSnapshots, parseSnapshot, publishBlockers, validatePublicDataset, type SnapshotDiff } from '../core/publication';
 import { auditLayer, buildPublicLayer, type AuditResult, type PublicLayerFiles } from '../core/publiclayer';
 import { PRIVACY_RADIUS_M } from '../core/publish';
@@ -19,7 +21,7 @@ type Phase =
   | { k: 'idle' }
   | { k: 'running'; step: PublishStep | 'deploy' | 'verify'; detail?: string }
   | { k: 'done'; commit: string | null; url: string | null; run: string | null; unchanged: boolean }
-  | { k: 'error'; msg: string };
+  | { k: 'error'; msg: string; stage?: GhStage; status?: number };
 
 const MAX_WAIT_MS = 10 * 60 * 1000;
 
@@ -37,8 +39,18 @@ export function PublishPage() {
   const [approveLow, setApproveLow] = useState(false);
   const [token, setToken] = useState('');
   const [phase, setPhase] = useState<Phase>({ k: 'idle' });
+  const [conn, setConn] = useState<ConnResult | 'running' | null>(null);
   const alive = useRef(true);
-  useEffect(() => () => { alive.current = false; }, []);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []); // StrictMode montează de două ori
+  const clearToken = () => { setToken(''); setConn(null); };
+  const errPhase = (e: unknown): Phase => e instanceof GhError
+    ? { k: 'error', msg: e.message, stage: e.stage, status: e.status }
+    : { k: 'error', msg: 'Publicarea a eșuat dintr-un motiv neașteptat. Propunerea și tokenul rămân aici; încearcă din nou.' };
+  const runTest = async () => {
+    setConn('running');
+    const r = await testConnection(token);
+    if (alive.current) setConn(r);
+  };
 
   // stratul publicat ACUM pe site-ul bicicliștilor (sursa adevărului pentru diferență și conflicte)
   const loadLive = async () => {
@@ -73,8 +85,7 @@ export function PublishPage() {
 
   const publish = async () => {
     if (!out || !canPublish) return;
-    const tok = token;
-    setToken(''); // tokenul nu mai rămâne nici în câmp: e folosit doar pentru această operație
+    const tok = token; // rămâne în câmp până la confirmare: la o eroare se poate reîncerca fără a-l lipi din nou
     const id = out.layer.snap.meta.publication_id!;
     try {
       setPhase({ k: 'running', step: 'connect' });
@@ -89,16 +100,16 @@ export function PublishPage() {
       while (alive.current && Date.now() - t0 < MAX_WAIT_MS) {
         const st = res.commit ? await deployStatus(res.commit) : null;
         if (st) run = st.url;
-        if (st?.status === 'completed' && st.conclusion !== 'success') throw new GhError('other', `Deploy-ul GitHub a eșuat (${st.conclusion}). Commitul există; vezi Actions.`);
+        if (st?.status === 'completed' && st.conclusion !== 'success') throw new GhError('deploy', `Deploy-ul GitHub Pages a eșuat (${st.conclusion}). Commitul există; vezi Actions, apoi apasă din nou Publică (nu se creează alt commit).`, undefined, 'deploy');
         const l = await checkLive(id, out.layer.snap.edges.length);
-        if (l.kind === 'live') { setPhase({ k: 'done', commit: res.commit, url: res.url, run, unchanged: res.unchanged }); void loadLive(); return; }
-        if (l.kind === 'failed') throw new GhError('other', `Verificarea a eșuat: ${l.reason}.`);
+        if (l.kind === 'live') { setToken(''); setConn(null); setPhase({ k: 'done', commit: res.commit, url: res.url, run, unchanged: res.unchanged }); void loadLive(); return; }
+        if (l.kind === 'failed') throw new GhError('verify', `Versiunea a ajuns pe site, dar nu corespunde: ${l.reason}.`, undefined, 'verify');
         setPhase({ k: 'running', step: st && st.status !== 'completed' ? 'deploy' : 'verify', detail: `${Math.round((Date.now() - t0) / 1000)} s${st ? ` · deploy: ${st.status === 'completed' ? 'terminat' : st.status === 'in_progress' ? 'în curs' : 'în așteptare'}` : ''}` });
         await new Promise((r) => setTimeout(r, 10000));
       }
-      if (alive.current) setPhase({ k: 'error', msg: `Commitul a fost creat${res.commit ? ` (${res.commit.slice(0, 7)})` : ''}, dar site-ul live nu arată încă versiunea nouă după ${MAX_WAIT_MS / 60000} minute. Verifică Actions; propunerea rămâne aici.` });
+      if (alive.current) setPhase({ k: 'error', stage: 'verify', msg: `Commitul a fost creat${res.commit ? ` (${res.commit.slice(0, 7)})` : ''}, dar site-ul live nu arată încă versiunea nouă după ${MAX_WAIT_MS / 60000} minute. Verifică Actions; propunerea rămâne aici.` });
     } catch (e) {
-      setPhase({ k: 'error', msg: e instanceof GhError ? e.message : 'Publicarea a eșuat. Propunerea rămâne aici; încearcă din nou.' });
+      if (alive.current) setPhase(errPhase(e));
       if (e instanceof GhError && e.kind === 'conflict') void loadLive();
     }
   };
@@ -181,15 +192,21 @@ export function PublishPage() {
           {phase.k !== 'done' && (
             <>
               <label className="field"><span>Token GitHub (doar pentru această publicare)</span>
-                <input className="input" type="password" autoComplete="off" spellCheck={false} value={token} onChange={(e) => setToken(e.target.value)} placeholder="github_pat_…" disabled={phase.k === 'running'} />
+                <input className="input" type="password" name="sg-publish-token" autoComplete="off" autoCapitalize="off" autoCorrect="off" spellCheck={false} value={token} onChange={(e) => { setToken(e.target.value); setConn(null); }} placeholder="github_pat_…" disabled={phase.k === 'running'} />
               </label>
+              <div className="row">
+                <button className="btn" disabled={!token || conn === 'running' || phase.k === 'running'} onClick={() => void runTest()}>{conn === 'running' ? <Loader2 className="spin" /> : <ShieldCheck />} Testează conexiunea GitHub</button>
+                {token && <button className="btn ghost" disabled={phase.k === 'running'} onClick={clearToken}><XCircle /> Șterge tokenul</button>}
+              </div>
+              {conn && conn !== 'running' && <ConnReport r={conn} />}
               <details className="small">
                 <summary>Cum obțin tokenul (1 minut)</summary>
                 <ol style={{ margin: '6px 0 0', paddingLeft: 20 }}>
                   <li><a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">GitHub → Fine-grained token nou <ExternalLink style={{ width: 13, height: 13 }} /></a>, expirare 1 zi.</li>
                   <li>Repository access: <b>Only select repositories → {TARGET.owner}/{TARGET.repo}</b>.</li>
                   <li>Permissions → Repository → <b>Contents: Read and write</b> (nimic altceva).</li>
-                  <li>Copiază tokenul aici. Nu se salvează: dispare după publicare. Revocă-l după demo.</li>
+                  <li>Copiază tokenul aici și apasă „Testează conexiunea GitHub” (nu modifică nimic).</li>
+                  <li>Tokenul nu se salvează: rămâne doar cât e deschisă pagina, dispare după publicarea confirmată sau la „Șterge tokenul”. Revocă-l după demo.</li>
                 </ol>
               </details>
               <button className="btn primary lg block" disabled={!canPublish} onClick={() => void publish()}><Upload /> Publică pe ShockGrid</button>
@@ -197,7 +214,7 @@ export function PublishPage() {
             </>
           )}
           {phase.k !== 'idle' && <Progress phase={phase} />}
-          {phase.k === 'error' && <Banner kind="danger">{phase.msg}</Banner>}
+          {phase.k === 'error' && <Banner kind="danger">{phase.stage && <><b>Etapa: {STAGE_LABEL[phase.stage]}{phase.status ? ` · HTTP ${phase.status}` : ''}.</b> </>}{phase.msg}{token ? ' Tokenul a rămas în câmp: poți reîncerca.' : ''}</Banner>}
         </section>
       )}
 
@@ -216,6 +233,17 @@ export function PublishPage() {
         </section>
       )}
     </div></main>
+  );
+}
+
+function ConnReport({ r }: { r: ConnResult }) {
+  return (
+    <div className="stack" style={{ gap: 6 }}>
+      <Banner kind={r.ok ? 'ok' : 'danger'}>{r.ok ? <><b>Conexiune în regulă.</b> Tokenul poate publica în {TARGET.owner}/{TARGET.repo}. Nimic nu a fost modificat.</> : <><b>Testul a eșuat la: {STAGE_LABEL[r.error!.stage ?? 'network']}{r.error!.status ? ` · HTTP ${r.error!.status}` : ''}.</b> {r.error!.message}</>}</Banner>
+      <ul className="small pub-checks">
+        {r.checks.map((c, i) => <li key={i} className={c.ok ? '' : 'bad'}>{c.ok ? <CheckCircle2 /> : <XCircle />} {STAGE_LABEL[c.stage]}{c.status ? ` (HTTP ${c.status})` : ''}: {c.msg}</li>)}
+      </ul>
+    </div>
   );
 }
 
