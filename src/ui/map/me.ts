@@ -17,7 +17,7 @@ export function useMeLayer(map: L.Map | null, loc: LocState, follow: boolean) {
   const layer = useRef<{ circle: L.Circle; marker: L.Marker } | null>(null);
   useEffect(() => {
     if (!map) return;
-    return () => { layer.current?.circle.remove(); layer.current?.marker.remove(); layer.current = null; };
+    return () => { if (alive(map)) { layer.current?.circle.remove(); layer.current?.marker.remove(); } layer.current = null; };
   }, [map]);
   useEffect(() => {
     if (!alive(map)) return;

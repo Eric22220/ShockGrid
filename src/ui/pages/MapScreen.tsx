@@ -1,4 +1,4 @@
-import { Flag, Layers, LocateFixed, Locate, LocateOff, Search } from 'lucide-react';
+import { Layers, LocateFixed, Locate, LocateOff, Search } from 'lucide-react';
 import { useMemo, useState, useSyncExternalStore } from 'react';
 import { ROUGH_LABEL, snapshotRideCount, type EdgeAgg, type ShockZone } from '../../core/aggregate';
 import { t } from '../../i18n/ro';
@@ -14,6 +14,7 @@ import { distToEdges } from '../../core/corridor';
 import { useLocation, useMeLayer } from '../map/me';
 import { useLayerGroup, useLeaflet } from '../map/useLeaflet';
 import { go } from '../App';
+import { ReportButton } from '../components/QuickReport';
 
 type Sel = { edge?: EdgeAgg; zone?: ShockZone; report?: LocalReport; layers?: true } | null;
 
@@ -86,11 +87,7 @@ export function MapScreen({ focus }: { focus?: string }) {
           <button className="chip" onClick={() => setSel({ layers: true })}>Încă nu sunt străzi măsurate</button>
         ) : null}
       </div>
-      {!sel && (
-        <button className="fab" onClick={() => go(loc.fix ? `/report/new?lat=${loc.fix.lat}&lon=${loc.fix.lon}` : '/report/new')} aria-label="Raportează o problemă a drumului">
-          <Flag aria-hidden="true" /> Raportează
-        </button>
-      )}
+      {!sel && <ReportButton />}
 
       {sel?.layers && (
         <Sheet title="Harta confortului" onClose={() => setSel(null)}>

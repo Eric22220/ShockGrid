@@ -2,6 +2,7 @@ import { Bookmark, Camera, Check, Copy, ExternalLink, Share2, Trash2, X } from '
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { nearestStreetName } from '../../services/geocode';
 import { prepPhoto } from '../../services/photo';
+import { PLACE_REASON_TEXT, type PlaceReason } from '../../services/hazard';
 import { createReport, quickMark, REPORT_TYPES, sesizareText, updateReport, VISIBILITY_LABEL } from '../../services/reports';
 import type { ReportType } from '../../storage/idb';
 import { removeReport, saveReport, useApp } from '../../state/store';
@@ -10,14 +11,14 @@ import { gpsQuality, useLocation } from '../map/me';
 import { useLeaflet } from '../map/useLeaflet';
 import { go } from '../App';
 
-export function ReportScreen({ id, lat, lon }: { id?: string; quick?: boolean; lat?: number; lon?: number }) {
+export function ReportScreen({ id, lat, lon, type: preType, why }: { id?: string; quick?: boolean; lat?: number; lon?: number; type?: string | null; why?: string | null }) {
   const existing = useApp((s) => (id && id !== 'new' ? s.reports.find((r) => r.id === id) : undefined));
   const graph = useApp((s) => s.graph);
   const isNew = !existing;
   const given = Number.isFinite(lat) && Number.isFinite(lon) && lat !== 0 ? ([lat!, lon!] as [number, number]) : null;
   const loc = useLocation(isNew && !given);
   const start: [number, number] | null = existing ? [existing.lat, existing.lon] : given ?? (loc.fix ? [loc.fix.lat, loc.fix.lon] : null);
-  const [type, setType] = useState<ReportType>(existing?.type ?? 'nespecificat');
+  const [type, setType] = useState<ReportType>(existing?.type ?? (REPORT_TYPES.some((x) => x.id === preType) ? (preType as ReportType) : 'nespecificat'));
   const [desc, setDesc] = useState(existing?.description ?? '');
   const [photo, setPhoto] = useState<Blob | null>(existing?.photo ?? null);
   const [point, setPoint] = useState<[number, number] | null>(start);
@@ -35,7 +36,8 @@ export function ReportScreen({ id, lat, lon }: { id?: string; quick?: boolean; l
   const street = useMemo(() => (graph && point ? nearestStreetName(graph, point[0], point[1]) : null), [graph, point]);
   const photoUrl = useMemo(() => (photo ? URL.createObjectURL(photo) : null), [photo]);
   useEffect(() => () => { if (photoUrl) URL.revokeObjectURL(photoUrl); }, [photoUrl]);
-  const acc = existing ? existing.acc : given ? null : loc.fix?.acc ?? null;
+  // locul ales de mână pe hartă nu are o precizie GPS: nu atribuim una falsă
+  const acc = existing ? existing.acc : given || why ? null : loc.fix?.acc ?? null;
 
   const save = async () => {
     if (!point) return;
@@ -60,7 +62,9 @@ export function ReportScreen({ id, lat, lon }: { id?: string; quick?: boolean; l
   return (
     <main className="screen" style={{ paddingBottom: 32 }}><div className="wrap stack">
       <Header title={isNew ? 'Raportează o problemă' : existing.status === 'draft' ? 'Completează raportul' : 'Raportul tău'} back={isNew ? '#/' : '#/reports'} />
-      {isNew && <Banner kind="info">Oprește-te într-un loc sigur înainte să completezi.</Banner>}
+      {isNew && why && why !== 'manual' ? (
+        <Banner kind="warn"><b>Fixează locul pe hartă.</b> {PLACE_REASON_TEXT[why as PlaceReason] ?? ''} Nu punem raportul automat pe o poziție greșită: mută harta până când acul e pe problemă, apoi salvează.</Banner>
+      ) : isNew && <Banner kind="info">Oprește-te într-un loc sigur înainte să completezi.</Banner>}
       <span className="badge" style={{ alignSelf: 'flex-start' }}>Se salvează doar pe acest telefon · nu e trimis nimănui</span>
       <div style={{ position: 'relative' }}>
         <div ref={ref} className="map inline tall" role="application" aria-label="Mută harta pentru a ajusta locul problemei" />

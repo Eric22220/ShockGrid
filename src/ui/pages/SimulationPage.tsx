@@ -1,4 +1,4 @@
-// Pagina SIMULARE (Instrumente avansate): demonstrează regulile motorului de rutare pe un strat inventat.
+// Pagina SIMULARE (ShockGrid Lab): demonstrează regulile motorului de rutare pe un strat inventat.
 import { useMemo, useState } from 'react';
 import { routeEvidence } from '../../core/routeplan';
 import { simulate, type SimScenario } from '../../core/simulate';

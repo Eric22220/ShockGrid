@@ -130,19 +130,26 @@ export function Header({ title, back, right }: { title: ReactNode; back?: string
   );
 }
 
-// ---- toast simplu, global ----
-let toastMsg: string | null = null;
+// ---- toast simplu, global (opțional cu acțiuni, ex. „Anulează”) ----
+export interface ToastAction { label: string; run: () => void }
+let toastMsg: { text: string; actions: ToastAction[] } | null = null;
 let toastTimer: number | null = null;
 const tl = new Set<() => void>();
-export function toast(msg: string) {
-  toastMsg = msg;
+export function toast(msg: string, actions: ToastAction[] = []) {
+  toastMsg = { text: msg, actions };
   tl.forEach((l) => l());
   if (toastTimer) clearTimeout(toastTimer);
-  toastTimer = window.setTimeout(() => { toastMsg = null; tl.forEach((l) => l()); }, 3200);
+  toastTimer = window.setTimeout(() => { toastMsg = null; tl.forEach((l) => l()); }, actions.length ? 7000 : 3200);
 }
 export function Toaster() {
   const m = useSyncExternalStore((l) => { tl.add(l); return () => tl.delete(l); }, () => toastMsg);
-  return m ? <div className="toast" role="status" aria-live="polite">{m}</div> : null;
+  if (!m) return null;
+  return (
+    <div className={`toast ${m.actions.length ? 'with-actions' : ''}`} role="status" aria-live="polite">
+      <span>{m.text}</span>
+      {m.actions.map((a) => <button key={a.label} className="toast-act" onClick={() => { toastMsg = null; tl.forEach((l) => l()); a.run(); }}>{a.label}</button>)}
+    </div>
+  );
 }
 
 export function useDebounced<T>(v: T, ms: number): T {

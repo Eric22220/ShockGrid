@@ -309,3 +309,24 @@ th, td { text-align: left; padding: 8px; border-bottom: 1px solid var(--border);
 .item .s.wrap { white-space: normal; }
 .skeleton { height: 48px; border-radius: 12px; background: linear-gradient(90deg, var(--surface-2), var(--surface-3), var(--surface-2)); background-size: 200% 100%; animation: shimmer 1.2s infinite linear; }
 @keyframes shimmer { to { background-position: -200% 0; } }
+
+/* ---------- raportare rapidă, starea măsurării ---------- */
+.toast.with-actions { display: flex; align-items: center; gap: 4px; padding: 8px 8px 8px 16px; width: max-content; }
+.toast.with-actions > span { flex: 1; padding-right: 6px; }
+.toast-act { background: transparent; border: 0; color: inherit; font: inherit; font-weight: 750; text-decoration: underline; text-underline-offset: 3px; min-height: 44px; padding: 0 10px; cursor: pointer; }
+.hazard-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.hazard-grid button { min-height: 64px; border-radius: var(--radius); border: 1.5px solid var(--border); background: var(--surface); font-size: 16px; font-weight: 700; color: var(--fg); cursor: pointer; padding: 8px 10px; }
+.hazard-grid button.first { border-color: var(--danger); color: var(--danger); background: var(--danger-soft, var(--surface-2)); }
+.hazard-grid button:active { transform: scale(.98); }
+.hazard-grid button:disabled { opacity: .5; }
+.health { display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; font-weight: 650; padding: 6px 12px; border-radius: 18px; min-height: 36px; border: 0; background: var(--surface-2); color: var(--fg-2); }
+.health i { width: 9px; height: 9px; border-radius: 50%; background: currentColor; display: block; }
+.health.ok { color: var(--comfort); }
+.health.ok i { animation: pulse 1.6s infinite; }
+.health.warn, .health.starting { color: var(--warn); }
+.health.off { color: var(--danger); }
+.btn.report { background: var(--danger); color: #fff; border-color: transparent; font-weight: 750; }
+@media (prefers-color-scheme: dark) { .btn.report { color: #2a0703; } }
+.ask-card { border: 1.5px solid var(--warn); }
+.sheet.quick { position: fixed; z-index: 1700; padding-bottom: var(--safe-b); }
+.quick-backdrop { position: fixed; inset: 0; z-index: 1690; background: rgba(0,0,0,.18); }

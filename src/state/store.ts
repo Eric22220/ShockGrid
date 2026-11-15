@@ -31,6 +31,8 @@ export interface Settings {
   showZones: boolean;
   /** stilul hărții de fundal: auto = estompată în modul întunecat */
   mapStyle: 'auto' | 'light' | 'dark';
+  /** „Contribuie cu măsurători în timpul navigării”: pornit explicit de utilizator */
+  contribute: boolean;
 }
 
 export interface ImportReport {
@@ -83,6 +85,7 @@ const defaultSettings: Settings = {
   showReview: false,
   showZones: true,
   mapStyle: 'auto',
+  contribute: false,
 };
 
 let state: AppState = {

@@ -1,9 +1,9 @@
-import { Activity, Bookmark, MapPin, Pause, Play, RotateCcw, Square, Sun, Trash2, X } from 'lucide-react';
+import { Activity, MapPin, Pause, Play, RotateCcw, Square, Sun, Trash2, X } from 'lucide-react';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { requestMotionPermission, type SourceState } from '../../capture/recorder';
-import { quickMark } from '../../services/reports';
-import { discardRide, markRide, pauseRide, resumeRide, retryRideSources, rideActive, rideStats, startRide, stopRide, subscribeRide } from '../../services/ride';
-import { saveReport } from '../../state/store';
+import { monitorHealth } from '../../capture/health';
+import { ReportButton } from '../components/QuickReport';
+import { discardRide, pauseRide, resumeRide, retryRideSources, rideActive, rideStats, startRide, stopRide, subscribeRide } from '../../services/ride';
 import { fmt, fmtLen, shareOrDownload } from '../format';
 import { Banner, Header, Stat, toast } from '../kit';
 import { gpsQuality, useLocation } from '../map/me';
@@ -49,7 +49,7 @@ export function RecordScreen() {
     const r = await stopRide((stage, frac) => setPhase({ kind: 'processing', stage, frac }));
     if (r.empty) { setPhase({ kind: 'empty' }); return; }
     if (!r.rideId) { setPhase({ kind: 'failed', msg: r.error ?? 'eroare necunoscută', zip: r.zip }); return; }
-    go(r.shocks > 0 ? `/review/${r.rideId}` : `/ride/${r.rideId}`);
+    go(`/after/${r.rideId}`);
   }} /> : <PreRide />;
 }
 
@@ -98,11 +98,11 @@ function LiveView({ onStop }: { onStop: () => void }) {
   const [confirmStop, setConfirmStop] = useState(false);
   const { ref, map } = useLeaflet({ zoom: 16, onDrag: () => setFollow(false) });
   const me = useRef<L.CircleMarker | null>(null);
+  // în mers: doar traseul și poziția; șocurile detectate se văd după tură, nu acum
   useLayerGroup(map, (g) => {
     if (!s) return;
     if (s.track.length > 1) L.polyline(s.track, { color: '#1857f5', weight: 5, opacity: 0.9, interactive: false }).addTo(g);
-    for (const c of s.live.candidates) if (c.lat !== null && c.lon !== null) L.circleMarker([c.lat, c.lon], { radius: 7, color: '#fff', weight: 2, fillColor: '#e8590c', fillOpacity: 1, interactive: false }).addTo(g);
-  }, [s?.track.length, s?.live.candidates.length]);
+  }, [s?.track.length]);
   useEffect(() => {
     if (!alive(map) || !s?.lastFix) return;
     const ll: [number, number] = [s.lastFix.lat, s.lastFix.lon];
@@ -114,29 +114,17 @@ function LiveView({ onStop }: { onStop: () => void }) {
   const q = gpsQuality(s.acc);
   const paused = s.state === 'paused';
   const src: SourceState = s.sources;
-  const status = paused ? 'Pauză'
-    : src === 'waiting' ? 'Se pornesc senzorii…'
-      : src === 'none' ? 'Nu se înregistrează nimic'
-        : !s.live.moving && s.live.stoppedFor_s > 15 ? 'Oprit — se înregistrează în continuare'
-          : src === 'gps_only' ? 'Se înregistrează doar traseul'
-            : src === 'imu_only' ? 'Se înregistrează fără GPS'
-              : 'Se înregistrează';
+  const h = monitorHealth(s);
   const retry = () => {
     const perm = requestMotionPermission(); // iOS: sincron, din click
     retryRideSources();
     perm.then((p) => { if (p !== 'granted' && s.imu !== 'ok') toast('Senzorii de mișcare sunt tot blocați: vezi pașii de mai jos.'); }).catch(() => {});
   };
-  const cands = s.live.candidates.filter((c) => !c.review).length;
-  const mark = async () => {
-    markRide('marcaj pentru raport');
-    if (s.lastFix) { await saveReport(quickMark(s.lastFix.lat, s.lastFix.lon, s.lastFix.acc)); toast('Marcat. Completezi raportul după tură.'); }
-    else toast('Nu avem încă poziția GPS.');
-  };
   return (
     <main className="screen-map no-nav" aria-label="Tură în curs">
       <div ref={ref} className="map" />
       <div className="live-top">
-        <span className="chip live" role="status"><span className="rec-dot" aria-hidden="true" /> {status}</span>
+        <span className={`health ${h.level}`} role="status" style={{ background: 'var(--surface)', boxShadow: 'var(--shadow-1)' }}><i aria-hidden="true" /> {h.text}</span>
         <span className={`chip`}>GPS {q.label}</span>
         {!follow && <button className="chip" onClick={() => setFollow(true)}>Recentrează</button>}
       </div>
@@ -157,20 +145,18 @@ function LiveView({ onStop }: { onStop: () => void }) {
               : <><b>Fără GPS:</b> {s.gps === 'denied' ? 'locația e refuzată' : 'nu primim semnal GPS'}. Vibrațiile se măsoară, dar tura nu va apărea pe hartă.</>}</div>
             <details className="card" style={{ marginTop: 8 }}><summary>Cum repari</summary><PermissionHelp need={src === 'gps_only' ? 'motion' : 'gps'} /><button className="btn sm block" style={{ marginTop: 8 }} onClick={retry}><RotateCcw /> Reîncearcă</button></details>
           </div>
-        ) : s.problems.length > 0 ? <div className="alert-strip" role="alert" style={{ marginBottom: 10 }}>{s.problems[0]}</div>
+        ) : h.detail ? <div className="alert-strip" role="alert" style={{ marginBottom: 10 }}>{h.detail}</div>
+          : s.problems.length > 0 ? <div className="alert-strip" style={{ marginBottom: 10 }}>{s.problems[0]}</div>
           : s.wakeLock !== 'on' && s.wakeLock !== 'unsupported' ? <div className="alert-strip" style={{ marginBottom: 10 }}>Ține ecranul aprins: altfel senzorii se opresc.</div> : null}
         <div className="grid3">
           <Stat v={s.speed !== null && s.speed >= 0 ? fmt(s.speed * 3.6, 0) : '—'} unit="km/h" l="viteză" />
           <Stat v={fmtLen(s.live.distance)} l="distanță" />
           <Stat v={dur(s.elapsed_s)} l="durată" />
         </div>
-        <p className="small" style={{ margin: '10px 2px' }}>
-          {cands > 0 ? <><b style={{ color: 'var(--warn)' }}>{cands} {cands === 1 ? 'posibilă denivelare' : 'posibile denivelări'}</b> — le verifici după tură.</> : 'Nicio denivelare candidată încă.'}
-        </p>
+        <div style={{ margin: '10px 0' }}><ReportButton variant="panel" /></div>
         {!confirmStop ? (
-          <div className="grid3">
+          <div className="grid2">
             {paused ? <button className="btn" onClick={resumeRide}><Play /> Reia</button> : <button className="btn" onClick={pauseRide}><Pause /> Pauză</button>}
-            <button className="btn" onClick={mark} aria-label="Marchează locul pentru un raport mai târziu"><Bookmark /> Marchează</button>
             <button className="btn danger" onClick={() => setConfirmStop(true)}><Square /> Stop</button>
           </div>
         ) : (

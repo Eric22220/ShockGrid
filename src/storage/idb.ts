@@ -40,6 +40,8 @@ export interface LocalReport {
   status: ReportStatus;
   source: 'manual' | 'quick' | 'shock';
   shock_ref?: string; // `${ride_id}:${shock_id}` pentru denivelările confirmate după tură
+  /** nimeni altcineva nu a verificat raportul; e observația ta, nu o măsurătoare */
+  verification?: 'unverified';
 }
 
 interface SGDB extends DBSchema {

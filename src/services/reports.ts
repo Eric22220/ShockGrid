@@ -39,7 +39,7 @@ export function createReport(i: ReportInput): LocalReport {
   return {
     id: newId(), created_at: now, updated_at: now, lat: i.lat, lon: i.lon, acc: i.acc, type: i.type,
     description: (i.description ?? '').trim().slice(0, 1000), photo: i.photo ?? null, status: 'local',
-    source: i.source ?? 'manual', shock_ref: i.shock_ref,
+    source: i.source ?? 'manual', shock_ref: i.shock_ref, verification: 'unverified',
   };
 }
 

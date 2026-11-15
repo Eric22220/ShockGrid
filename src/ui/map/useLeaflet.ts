@@ -4,6 +4,14 @@ import 'leaflet/dist/leaflet.css';
 import { useEffect, useRef, useState } from 'react';
 import { TIMISOARA_CENTER } from '../../core/geo';
 
+// Leaflet 1.9: o redesenare a canvasului programată (requestAnimationFrame) poate rula după ce harta a fost
+// eliminată la schimbarea ecranului, când contextul canvasului nu mai există → „clearRect of undefined”.
+// O redesenare fără context nu are ce desena: o ignorăm.
+type CanvasInternals = { _ctx?: unknown; _redrawRequest: unknown; _redraw: () => void };
+const canvasProto = L.Canvas.prototype as unknown as CanvasInternals;
+const origRedraw = canvasProto._redraw;
+canvasProto._redraw = function (this: CanvasInternals) { if (!this._ctx) { this._redrawRequest = null; return; } origRedraw.call(this); };
+
 export function useLeaflet(opts: { zoom?: number; center?: [number, number]; onClick?: (lat: number, lon: number) => void; onDrag?: () => void; interactive?: boolean } = {}) {
   const ref = useRef<HTMLDivElement | null>(null);
   const [map, setMap] = useState<L.Map | null>(null);
@@ -45,7 +53,9 @@ export function useLayerGroup(map: L.Map | null, build: (g: L.LayerGroup) => voi
     if (!alive(map)) return;
     const g = L.layerGroup().addTo(map);
     build(g);
-    return () => { g.remove(); };
+    // harta poate fi deja eliminată (efectul ei se curăță primul): o eliminare pe o hartă moartă ar programa
+    // o redesenare a canvasului fără context („clearRect of undefined”)
+    return () => { if (alive(map)) g.remove(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, ...deps]);
 }

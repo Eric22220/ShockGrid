@@ -29,13 +29,13 @@ export function DataPage() {
         <dt>Căutare adrese</dt><dd>Străzi: local, din OpenStreetMap. Adrese și locuri: Photon (komoot), pe baza OpenStreetMap</dd>
         <dt>Hartă de fundal</dt><dd>Tile-uri OpenStreetMap</dd>
       </dl>
-      <p className="small">Exporturile pentru instituții (GeoJSON/JSON) sunt în Mai mult → Instrumente avansate.</p>
+      <p className="small">Exporturile pentru instituții (GeoJSON/JSON) sunt în Mai mult → ShockGrid Lab.</p>
       <p className="xs muted">Cod: MIT. Date derivate din OpenStreetMap: ODbL 1.0.</p>
     </div></main>
   );
 }
 
-/** Exporturile pentru instituții (în Instrumente avansate). */
+/** Exporturile pentru instituții (în ShockGrid Lab). */
 export function ExportsPage() {
   const graph = useApp((s) => s.graph);
   const layer = useApp((s) => s.layer);

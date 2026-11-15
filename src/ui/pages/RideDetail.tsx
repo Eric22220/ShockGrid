@@ -2,6 +2,7 @@ import { BarChart3, ListFilter, Map as MapIcon, Share2, Trash2, TriangleAlert } 
 import { useMemo, useState } from 'react';
 import { DEFAULT_CONFIG } from '../../core/config';
 import { rideRoughness } from '../../core/roughness';
+import { MAX_PROMPTS, pendingPrompts } from '../../services/hazard';
 import { CLASSES, classOf } from '../../core/aggregate';
 import type { DeclaredSurface } from '../../core/types';
 import { t } from '../../i18n/ro';
@@ -36,6 +37,7 @@ export function RideDetail({ id }: { id?: string }) {
   const valid = Object.values(dist).reduce((a, b) => a + b, 0);
   const rr = rough;
   const toReview = rr ? rr.zones.filter((z) => z.priority !== 'low') : [];
+  const pending = pendingPrompts(r.ride_id, rr, reviews, [], Infinity);
   const unreviewed = toReview.filter((z) => !reviews[`${r.ride_id}:${z.strongest.id}`]).length;
   return (
     <main className="screen"><div className="wrap stack">
@@ -57,11 +59,11 @@ export function RideDetail({ id }: { id?: string }) {
       {p.processing_version !== DEFAULT_CONFIG.processing_version && (
         <Banner kind="info"><span>Tura a fost procesată cu {p.processing_version}; versiunea curentă ({DEFAULT_CONFIG.processing_version}) separă manevrarea telefonului de șocurile drumului. <button className="btn sm" disabled={busy} onClick={async () => { setBusy(true); try { await reprocessRide(r.ride_id); toast('Tura a fost reprocesată.'); } catch (e) { toast((e as Error).message); } finally { setBusy(false); } }}>{busy ? 'Se reprocesează…' : 'Reprocesează'}</button></span></Banner>
       )}
-      {rr && rr.counts.raw > 0 && (
-        <a className={`card ${unreviewed ? 'tint-warn' : ''}`} href={`#/review/${r.ride_id}`} style={{ display: 'flex', gap: 12, alignItems: 'center', textDecoration: 'none', color: 'inherit' }}>
+      {pending.length > 0 && (
+        <a className="card tint-warn" href={`#/after/${r.ride_id}`} style={{ display: 'flex', gap: 12, alignItems: 'center', textDecoration: 'none', color: 'inherit' }}>
           <TriangleAlert style={{ color: 'var(--warn)', flex: 'none' }} />
-          <div className="grow"><b>{rr.counts.zones ? `${rr.counts.zones} ${rr.counts.zones === 1 ? 'zonă' : 'zone'} cu șocuri grupate` : 'Niciun grup de șocuri'}</b><div className="small muted">{toReview.length ? `${toReview.length} de verificat${unreviewed < toReview.length ? ` · ${toReview.length - unreviewed} verificate` : ''}` : 'nimic prioritar de verificat'} · din {rr.counts.raw} evenimente brute</div></div>
-          <span className="btn sm primary">{unreviewed ? 'Verifică' : 'Revezi'}</span>
+          <div className="grow"><b>Ai întâlnit o problemă pe drum?</b><div className="small muted">{Math.min(pending.length, MAX_PROMPTS)} {Math.min(pending.length, MAX_PROMPTS) === 1 ? 'loc' : 'locuri'} unde telefonul a simțit șocuri</div></div>
+          <span className="btn sm primary">Răspunde</span>
         </a>
       )}
       <div className="card">
@@ -76,7 +78,6 @@ export function RideDetail({ id }: { id?: string }) {
           </>
         ) : <p className="small muted">Nu avem porțiuni de mers la viteză normală (2,5–9 m/s) cu GPS bun, deci nu dăm o clasă de confort acestei ture. Porțiunile lente se pot inspecta în „Analiză pe stradă”, comparate doar la aceeași viteză.</p>}
       </div>
-      <RideQualityCard p={p} rideId={r.ride_id} />
       <RideMiniMap p={p} />
       <label className="switch card" style={{ padding: '6px 16px' }}><input type="checkbox" checked={r.included} onChange={(e) => setIncluded(r.ride_id, e.target.checked)} /><span><b>Folosește tura în harta mea</b><div className="xs muted">Doar pe acest telefon</div></span></label>
       <div className="grid2">
@@ -100,8 +101,16 @@ export function RideDetail({ id }: { id?: string }) {
         </div>
       </details>
       <details className="card">
-        <summary>Analiză tehnică</summary>
+        <summary>ShockGrid Lab · analiză tehnică</summary>
         <div className="stack">
+          {rr && rr.counts.raw > 0 && (
+        <a className={`card ${unreviewed ? 'tint-warn' : ''}`} href={`#/review/${r.ride_id}`} style={{ display: 'flex', gap: 12, alignItems: 'center', textDecoration: 'none', color: 'inherit' }}>
+          <TriangleAlert style={{ color: 'var(--warn)', flex: 'none' }} />
+          <div className="grow"><b>{rr.counts.zones ? `${rr.counts.zones} ${rr.counts.zones === 1 ? 'zonă' : 'zone'} cu șocuri grupate` : 'Niciun grup de șocuri'}</b><div className="small muted">{toReview.length ? `${toReview.length} de verificat${unreviewed < toReview.length ? ` · ${toReview.length - unreviewed} verificate` : ''}` : 'nimic prioritar de verificat'} · din {rr.counts.raw} evenimente brute</div></div>
+          <span className="btn sm primary">{unreviewed ? 'Verifică' : 'Revezi'}</span>
+        </a>
+      )}
+          <RideQualityCard p={p} rideId={r.ride_id} />
           <a className="btn block" href={`#/ride/${r.ride_id}/replay`}><BarChart3 /> Grafic vibrații (replay)</a>
           <a className="btn block" href={`#/ride/${r.ride_id}/events`}><ListFilter /> Evenimente brute ({p.shocks.length}) · diagnostic</a>
           <RideSummaryCard p={p} />

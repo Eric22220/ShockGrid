@@ -41,11 +41,19 @@ Nu spunem „am inventat detectarea gropilor” și nici „colorăm străzile�
 3. **„De unde știți că scorul e valid științific?”** Nu pretindem o validare absolută. Indicele e RMS-ul accelerației verticale filtrate (procedură standard pentru vibrații), cu filtre de calitate documentate. Am testat lanțul pe semnale cu răspuns cunoscut (189 de teste automate) și am rulat o tură reală. Clasele A–E sunt relative la turele echipei; validarea cere ture repetate pe aceleași segmente (procedura e în `docs/VERIFICARE-TEREN.md`).
 4. **„Cum deosebiți trotuarul, pista și carosabilul cu eroarea GPS?”** De cele mai multe ori nu putem, și aplicația o spune. Dacă în OpenStreetMap există o cale paralelă de alt tip la câțiva metri, fereastra e „ambiguă” și segmentul rămâne cel mult „încredere redusă”. Pe Ioan Vidu trotuarele nu sunt desenate separat, deci totul cade pe axa străzii. O comparație între laturi se face doar cu intervale declarate din filmare.
 5. **„Ce se întâmplă pe străzile fără măsurători?”** Rămân „necunoscut”. Ruta afișată e cea mai scurtă, cu „Confort necunoscut”, fără insignă verde.
-6. **„Cum ar folosi primăria sau cetățenii rezultatele?”** Cetățenii: aleg între două rute știind cât e măsurat. Primăria: exporturi GeoJSON (Instrumente avansate) cu segmentele denivelate și zonele cu șocuri repetate, fiecare cu treceri, dată și încredere, ca listă de verificat pe teren. Nu înlocuiesc sesizările oficiale.
+6. **„Cum ar folosi primăria sau cetățenii rezultatele?”** Cetățenii: aleg între două rute știind cât e măsurat. Primăria: exporturi GeoJSON (ShockGrid Lab) cu segmentele denivelate și zonele cu șocuri repetate, fiecare cu treceri, dată și încredere, ca listă de verificat pe teren. Nu înlocuiesc sesizările oficiale.
 7. **„Telefoane diferite dau valori comparabile?”** Nu garantat. Suportul, bicicleta, anvelopele și telefonul schimbă valorile. De aceea clasele sunt relative la combinația din calibrare, iar comparabilitatea între telefoane e listată ca nevalidată (`LIMITARI.md`).
 8. **„Ce oprește rapoartele false sau înregistrările falsificate?”** Acum: nu există încărcare publică. Turele rămân pe telefon, iar stratul public îl publică echipa după audit. Un șoc devine „repetat” doar din treceri diferite, iar unul confirmat de om rămâne marcat ca observație, nu ca măsurătoare. O versiune comunitară ar avea nevoie de autentificare și verificări de consistență (`docs/BACKEND-COMUNITAR.md`). Nu le avem încă.
 
 Nu afirmăm reducerea accidentelor și nici măsurarea traficului.
+
+## Demo pentru cetățeni (fără explicații tehnice)
+1. Deschide ShockGrid: harta reală a Timișoarei.
+2. **Unde mergi?** → alege destinația → ruta, cu „măsurat” și „necunoscut” separate.
+3. Opțional: activează **Contribuie cu măsurători în timpul navigării** → **Pornește** (pe iPhone apare cererea de acces la mișcare).
+4. **Raportează → Groapă**: „Raport salvat pe acest telefon”, cu Anulează.
+5. **Oprește** → „Ai întâlnit o problemă pe drum?” → Da / Nu / Mai târziu.
+6. Separat: **Mai mult → ShockGrid Lab** pentru accelerație, potrivirea GPS, gruparea șocurilor și limitări (scenariile de mai jos).
 
 ## Scenariul A: datele reale trec de filtre
 1. 10 s de filmare cu bicicleta și suportul.
@@ -60,7 +68,7 @@ Nu afirmăm reducerea accidentelor și nici măsurarea traficului.
 1. Aceiași pași 1–4 de mai sus, pe telefonul care are tura (analiză locală, nimic publicat).
 2. Arătăm explicit de ce ferestrele au fost excluse (viteză, rotații, GPS).
 3. **Traseu**: „Confort necunoscut”, fără recomandare.
-4. **Mai mult → Instrumente avansate → SIMULARE rutare**: insigna roșie „SIMULARE — date inventate”; cele trei scenarii (fără date → necunoscut; doar ruta scurtă → nicio alternativă măsurată; ambele → alternativa cu metri D–E evitați). Spunem clar: „asta e o simulare a regulilor, nu o îmbunătățire măsurată”.
+4. **Mai mult → ShockGrid Lab → SIMULARE rutare**: insigna roșie „SIMULARE — date inventate”; cele trei scenarii (fără date → necunoscut; doar ruta scurtă → nicio alternativă măsurată; ambele → alternativa cu metri D–E evitați). Spunem clar: „asta e o simulare a regulilor, nu o îmbunătățire măsurată”.
 
 ## Demo pe două telefoane, cu același strat public
 1. Pe laptop (nu pe telefoane): `npm run build-layer -- rides/*.zip --out eval/private/propunere [--exploratory]`, apoi `npm run audit-layer -- eval/private/propunere rides/*.zip`. Toate verificările trebuie să fie „OK”.

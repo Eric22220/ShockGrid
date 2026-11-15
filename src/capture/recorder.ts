@@ -102,7 +102,11 @@ export interface LiveStats {
   problems: string[];
   live: LiveSummary;
   track: [number, number][];
-  lastFix: { lat: number; lon: number; acc: number | null } | null;
+  lastFix: { lat: number; lon: number; acc: number | null; t: number } | null;
+  /** secunde de la ultima mostră de mișcare (null = niciuna) */
+  motionAge_s: number | null;
+  /** pagina e ascunsă acum (ecran stins / altă aplicație): browserul nu trimite senzorii */
+  hidden: boolean;
 }
 
 export class Recorder {
@@ -132,6 +136,7 @@ export class Recorder {
   /** ms adăugate la ceasul evenimentelor ca să coincidă cu timpul epoch (null până la prima mostră) */
   private clockSkew: number | null = null;
   private unVis: (() => void) | null = null;
+  private hidden = false;
   private track: [number, number][] = [];
   readonly analyzer = new LiveAnalyzer();
   constructor(private meta: Record<string, unknown>, private deps: RecorderDeps = browserDeps()) {
@@ -200,6 +205,7 @@ export class Recorder {
     this.ev('ride_start');
     this.deps.addMotion(this.onMotion);
     this.unVis = this.deps.onVisibility?.((hidden) => {
+      this.hidden = hidden;
       if (hidden) { this.ev('visibility_hidden'); this.problems.add('ecranul a fost stins sau aplicația ascunsă: senzorii nu s-au citit în acel interval'); }
       else { this.ev('visibility_visible'); void this.lockScreen(); }
     }) ?? null;
@@ -318,6 +324,8 @@ export class Recorder {
       live: this.analyzer.summary(now),
       track: this.track,
       lastFix: this.lastFix,
+      motionAge_s: this.count > 0 ? (now - this.lastMotionT) / 1000 : null,
+      hidden: this.hidden,
     };
   }
 

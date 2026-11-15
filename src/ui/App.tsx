@@ -6,6 +6,7 @@ import { useApp } from '../state/store';
 import { ErrorBoundary } from './ErrorBoundary';
 import { Header, Toaster } from './kit';
 import { AdvancedPage } from './pages/AdvancedPage';
+import { AfterRide } from './pages/AfterRide';
 import { ComparePage } from './pages/ComparePage';
 import { DataPage } from './pages/DataPage';
 import { ImportPage } from './pages/ImportPage';
@@ -64,7 +65,8 @@ export function App() {
     case 'ride': tab = 'rides'; page = arg2 === 'street' ? <StreetPage id={arg} name={params.get('name')} /> : arg2 === 'events' ? <EventsPage id={arg} /> : arg2 === 'replay' ? <main className="screen"><div className="wrap"><Header title="Grafic vibrații" back={`#/ride/${arg}`} /><ReplayPage id={arg} /></div></main> : <RideDetail id={arg} />; break;
     case 'review': tab = 'rides'; page = <ReviewScreen id={arg} shock={params.get('shock')} />; break;
     case 'compare': tab = 'rides'; page = <main className="screen"><div className="wrap"><Header title="Compară ture" back="#/rides" /><ComparePage /></div></main>; break;
-    case 'report': tab = 'map'; navHidden = true; page = <ReportScreen id={arg} quick={params.get('quick') === '1'} lat={Number(params.get('lat'))} lon={Number(params.get('lon'))} />; break;
+    case 'report': tab = 'map'; navHidden = true; page = <ReportScreen id={arg} quick={params.get('quick') === '1'} lat={Number(params.get('lat'))} lon={Number(params.get('lon'))} type={params.get('type')} why={params.get('why')} />; break;
+    case 'after': tab = 'rides'; page = <AfterRide id={arg} />; break;
     case 'reports': tab = 'more'; page = <ReportsPage />; break;
     case 'more':
       tab = 'more';
