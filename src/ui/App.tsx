@@ -1,41 +1,29 @@
+// ShockGrid — aplicația pentru bicicliști (https://eric22220.github.io/ShockGrid/).
+// Doar ce folosește un ciclist: hartă, traseu, raportare, ture proprii, confidențialitate. Partea tehnică
+// (analiză, diagnostic, parametri, publicare) e un site separat, ShockGrid Dev (src/dev/), cu alt build:
+// componentele ei nu sunt importate aici, deci nu ajung în acest bundle.
 import { Bike, Map as MapIcon, Menu, Navigation } from 'lucide-react';
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useSyncExternalStore } from 'react';
 import { rideActive, subscribeRide } from '../services/ride';
 import { subscribeUpdate, updatePending } from '../services/update';
 import { useApp } from '../state/store';
 import { ErrorBoundary } from './ErrorBoundary';
-import { Header, Toaster } from './kit';
-import { AdvancedPage } from './pages/AdvancedPage';
+import { Toaster } from './kit';
+import { parseHash, useHash } from './nav';
 import { AfterRide } from './pages/AfterRide';
-import { ComparePage } from './pages/ComparePage';
 import { DataPage } from './pages/DataPage';
-import { ImportPage } from './pages/ImportPage';
+import { HelpPage } from './pages/HelpPage';
 import { MapScreen } from './pages/MapScreen';
-import { MethodologyPage } from './pages/MethodologyPage';
 import { MorePage } from './pages/MorePage';
+import { MyRide } from './pages/MyRide';
 import { PrivacyPage } from './pages/PrivacyPage';
 import { RecordScreen } from './pages/RecordScreen';
-import { ReplayPage } from './pages/ReplayPage';
 import { ReportScreen } from './pages/ReportScreen';
 import { ReportsPage } from './pages/ReportsPage';
-import { ReviewScreen } from './pages/ReviewScreen';
-import { RideDetail } from './pages/RideDetail';
-import { StreetPage } from './pages/StreetPage';
-import { EventsPage } from './pages/EventsPage';
 import { RidesPage } from './pages/RidesPage';
 import { RouteScreen } from './pages/RouteScreen';
 
-function useHash() {
-  const [h, setH] = useState(() => location.hash.slice(1) || '/');
-  useEffect(() => {
-    const on = () => setH(location.hash.slice(1) || '/');
-    addEventListener('hashchange', on);
-    return () => removeEventListener('hashchange', on);
-  }, []);
-  return h;
-}
-
-export function go(path: string) { location.hash = path; }
+export { go } from './nav';
 
 type Tab = 'map' | 'route' | 'rides' | 'more';
 const TABS: { id: Tab; href: string; label: string; Icon: typeof MapIcon }[] = [
@@ -46,10 +34,7 @@ const TABS: { id: Tab; href: string; label: string; Icon: typeof MapIcon }[] = [
 ];
 
 export function App() {
-  const path = useHash();
-  const [pathname, query = ''] = path.split('?');
-  const [, base = '', arg, arg2] = pathname.split('/');
-  const params = new URLSearchParams(query);
+  const { pathname, base, arg, params } = parseHash(useHash());
   const recording = useSyncExternalStore(subscribeRide, rideActive);
   const mapStyle = useApp((s) => s.settings.mapStyle);
   const updateReady = useSyncExternalStore(subscribeUpdate, updatePending);
@@ -60,17 +45,14 @@ export function App() {
     case '': case 'map': page = <MapScreen focus={arg} />; break;
     case 'route': tab = 'route'; page = <RouteScreen focus={params.get('focus')} />; break;
     case 'rides': tab = 'rides'; page = <RidesPage />; break;
-    case 'import': tab = 'rides'; page = <ImportPage />; break;
     case 'record': tab = 'rides'; navHidden = true; page = <RecordScreen />; break;
-    case 'ride': tab = 'rides'; page = arg2 === 'street' ? <StreetPage id={arg} name={params.get('name')} /> : arg2 === 'events' ? <EventsPage id={arg} /> : arg2 === 'replay' ? <main className="screen"><div className="wrap"><Header title="Grafic vibrații" back={`#/ride/${arg}`} /><ReplayPage id={arg} /></div></main> : <RideDetail id={arg} />; break;
-    case 'review': tab = 'rides'; page = <ReviewScreen id={arg} shock={params.get('shock')} />; break;
-    case 'compare': tab = 'rides'; page = <main className="screen"><div className="wrap"><Header title="Compară ture" back="#/rides" /><ComparePage /></div></main>; break;
-    case 'report': tab = 'map'; navHidden = true; page = <ReportScreen id={arg} quick={params.get('quick') === '1'} lat={Number(params.get('lat'))} lon={Number(params.get('lon'))} type={params.get('type')} why={params.get('why')} />; break;
+    case 'ride': tab = 'rides'; page = <MyRide id={arg} />; break;
     case 'after': tab = 'rides'; page = <AfterRide id={arg} />; break;
+    case 'report': tab = 'map'; navHidden = true; page = <ReportScreen id={arg} quick={params.get('quick') === '1'} lat={Number(params.get('lat'))} lon={Number(params.get('lon'))} type={params.get('type')} why={params.get('why')} />; break;
     case 'reports': tab = 'more'; page = <ReportsPage />; break;
     case 'more':
       tab = 'more';
-      page = arg === 'method' ? <MethodologyPage /> : arg === 'data' ? <DataPage /> : arg === 'privacy' ? <PrivacyPage /> : arg === 'advanced' ? <AdvancedPage sub={arg2} /> : <MorePage />;
+      page = arg === 'help' ? <HelpPage /> : arg === 'data' ? <DataPage /> : arg === 'privacy' ? <PrivacyPage /> : <MorePage />;
       break;
     default: page = <MapScreen />;
   }

@@ -6,11 +6,13 @@ describe('GitHub Pages', () => {
   const cfg = readFileSync('vite.config.ts', 'utf8');
   it('base, scope și start_url pe subcalea repo-ului', () => {
     expect(cfg).toContain("const BASE = '/ShockGrid/'");
-    expect(cfg).toMatch(/scope: BASE/);
-    expect(cfg).toMatch(/start_url: BASE/);
+    expect(cfg).toContain("const DEV_BASE = '/ShockGridDev/'");
+    expect(cfg).toMatch(/const base = dev \? DEV_BASE : BASE/);
+    expect(cfg).toMatch(/scope: base/);
+    expect(cfg).toMatch(/start_url: base/);
   });
   it('rutarea folosește hash (#/...), nu History API', () => {
-    const app = readFileSync('src/ui/App.tsx', 'utf8');
+    const app = readFileSync('src/ui/nav.ts', 'utf8');
     expect(app).toContain('location.hash');
     expect(app).not.toMatch(/pushState|BrowserRouter/);
   });

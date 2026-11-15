@@ -1,4 +1,4 @@
-import { BookOpen, Database, Flag, FlaskConical, Lock, RefreshCw } from 'lucide-react';
+import { BookOpen, Database, Flag, Lock, RefreshCw } from 'lucide-react';
 import { checkForUpdate, reloadIfSafe } from '../../services/update';
 import { updateSettings, useApp } from '../../state/store';
 import { Item, toast } from '../kit';
@@ -14,17 +14,13 @@ export function MorePage() {
       </div>
       <div className="section-label">Despre</div>
       <div className="list">
-        <Item href="#/more/method" icon={<BookOpen />} tone="primary" title="Cum măsurăm confortul" sub="Metodologia, pe scurt și în detaliu" />
+        <Item href="#/more/help" icon={<BookOpen />} tone="primary" title="Cum funcționează" sub="Culori, rute, raportare, pe scurt" />
         <Item href="#/more/data" icon={<Database />} tone="comfort" title="Date și surse" sub="Ce e public și ce rămâne pe telefon" />
         <Item href="#/more/privacy" icon={<Lock />} title="Confidențialitate" sub="Ce date stocăm și unde" />
       </div>
       <div className="section-label">Măsurători</div>
       <div className="card" style={{ padding: '4px 16px' }}>
         <label className="switch"><input type="checkbox" checked={contribute} onChange={(e) => void updateSettings({ contribute: e.target.checked })} /><span><b>Contribuie cu măsurători în timpul navigării</b><div className="xs muted">Când pornești navigarea, telefonul măsoară vibrațiile pe drum, doar cu aplicația deschisă și ecranul aprins. Se salvează doar pe acest telefon; oprești oricând din „Oprește”.</div></span></label>
-      </div>
-      <div className="section-label">Pentru echipă</div>
-      <div className="list">
-        <Item href="#/more/advanced" icon={<FlaskConical />} tone="warn" title="ShockGrid Lab" sub="Semnale brute, grupare, GPS, calibrare, import/export, publicare" />
       </div>
       <div className="section-label">Aplicația</div>
       <div className="list">

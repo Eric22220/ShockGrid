@@ -1,0 +1,31 @@
+// Verifică separarea celor două build-uri: aplicația pentru bicicliști (dist/) nu conține componentele tehnice,
+// iar ShockGrid Dev (dist-dev/) le conține și e servit sub /ShockGridDev/. Rulat în CI după ambele build-uri.
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
+
+const text = (dir) => readdirSync(join(dir, 'assets')).filter((f) => f.endsWith('.js') || f.endsWith('.css')).map((f) => readFileSync(join(dir, 'assets', f), 'utf8')).join('\n');
+// texte care există DOAR în paginile tehnice (src/dev și paginile de analiză folosite numai de Dev)
+const DEV_ONLY = ['Generează și auditează', 'Lanțul de procesare', 'Parametri algoritm', 'Date tehnice (Dev)', 'SIMULARE rutare', 'Importă din Sensor Logger', 'Exporturi GeoJSON', 'Diagnostic senzori', 'u-over', 'uplot', 'Analiză tehnică'];
+let fail = 0;
+const ok = (c, m) => { console.log(`${c ? 'OK  ' : 'FAIL'} ${m}`); if (!c) fail++; };
+
+const cit = text('dist');
+for (const m of DEV_ONLY) ok(!cit.includes(m), `dist/ (bicicliști) nu conține „${m}”`);
+ok(readFileSync('dist/index.html', 'utf8').includes('/ShockGrid/assets/'), 'dist/ servit sub /ShockGrid/');
+ok(JSON.parse(readFileSync('dist/manifest.webmanifest', 'utf8')).scope === '/ShockGrid/', 'manifestul bicicliștilor are scope /ShockGrid/');
+
+if (existsSync('dist-dev')) {
+  const dev = text('dist-dev');
+  for (const m of ['Generează și auditează', 'Parametri algoritm', 'Date tehnice (Dev)']) ok(dev.includes(m), `dist-dev/ conține „${m}”`);
+  const html = readFileSync('dist-dev/index.html', 'utf8');
+  ok(html.includes('/ShockGridDev/assets/') && !html.includes('"/ShockGrid/assets/'), 'dist-dev/ servit sub /ShockGridDev/');
+  ok(html.includes('ShockGrid Dev'), 'titlul ShockGrid Dev');
+  const man = JSON.parse(readFileSync('dist-dev/manifest.webmanifest', 'utf8'));
+  ok(man.scope === '/ShockGridDev/' && man.start_url === '/ShockGridDev/' && man.id === '/ShockGridDev/', 'manifestul Dev are scope, start_url și id /ShockGridDev/');
+  ok(dev.includes('shockgrid-dev'), 'Dev folosește baza IndexedDB „shockgrid-dev”');
+}
+for (const d of ['dist', 'dist-dev']) if (existsSync(d)) {
+  const walk = (x) => readdirSync(x, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(x, e.name)) : [join(x, e.name)]));
+  ok(!walk(d).some((f) => /\.zip$|Location\.csv|Accelerometer/i.test(f)), `${d}/ fără înregistrări brute`);
+}
+if (fail) { console.error(`${fail} verificări au eșuat`); process.exit(1); }

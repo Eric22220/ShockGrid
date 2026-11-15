@@ -6,6 +6,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev", "--", "--port", "5173", "--strictPort"],
       "port": 5173
+    },
+    {
+      "name": "shockgrid-devapp",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:devapp", "--", "--strictPort"],
+      "port": 5174
     }
   ]
 }

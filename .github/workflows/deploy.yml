@@ -28,6 +28,10 @@ jobs:
       - run: npm run build
       - name: Verifică build-ul pentru GitHub Pages
         run: npx vitest run test/pages-compat.test.ts
+      # ShockGrid Dev se publică din repo-ul Eric22220/ShockGridDev; aici doar verificăm că build-ul lui trece
+      # și că aplicația pentru bicicliști nu conține componentele tehnice
+      - run: npx vite build --mode devapp
+      - run: node scripts/check-bundles.mjs
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
@@ -40,3 +44,14 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+  # Pornește publicarea ShockGrid Dev (alt repo). Opțional: are nevoie de secretul DEV_DISPATCH_TOKEN
+  # (token cu acces „Actions: write” doar la Eric22220/ShockGridDev). Fără secret, pasul e sărit.
+  notify-dev:
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          TOKEN: ${{ secrets.DEV_DISPATCH_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then echo "DEV_DISPATCH_TOKEN lipsește: ShockGrid Dev se actualizează manual sau la 6 ore."; exit 0; fi
+          curl -fsS -X POST -H "Authorization: Bearer $TOKEN" -H "Accept: application/vnd.github+json"             https://api.github.com/repos/Eric22220/ShockGridDev/dispatches -d '{"event_type":"shockgrid-updated"}'

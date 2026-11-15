@@ -15,13 +15,21 @@ Fișier de reluare: ce merge, ce a fost verificat și cum, ce nu merge. Cel mai 
 - **Zona cu șoc — „treceri”:** numărul de treceri al zonei = trecerile muchiei pe care stă (din agregarea RVI), minim numărul de detectări. Nu publicăm trasee, deci nu putem număra trecerile prin rază din snapshot.
 - **Ghidul Primăriei:** nu contrazice specificația. Notat: „treat gaps as unknown”, „Romanian first”, WCAG 2.1 AA, „private by default”, Sesizări ca unic canal pentru probleme (nu trimitem sesizări, doar link), `/api/zones` e BROWSER OK (opțional, neimplementat încă).
 
+## Două site-uri: ShockGrid și ShockGrid Dev (15.11.2026)
+Checkpoint: tag `checkpoint-before-two-sites`.
+- **https://eric22220.github.io/ShockGrid/** (repo ShockGrid, `deploy.yml`): aplicația pentru bicicliști, intrarea `src/main.tsx` → `src/ui/App.tsx`. Hartă, traseu, raportare, ture proprii (pagină simplă), întrebările de după tură, Mai mult = rapoarte, măsurători (consimțământ), cum funcționează, date și surse, confidențialitate, actualizări. Fără import, diagnostic, parametri, grafice, evenimente brute, publicare.
+- **https://eric22220.github.io/ShockGridDev/** (repo ShockGridDev): build `vite build --mode devapp` din același cod (`src/main-dev.tsx` → `src/dev/DevApp.tsx`, `dist-dev/`, bază `/ShockGridDev/`, manifest și service worker proprii). Panou cu lanțul de procesare și pașii demo-ului, import ZIP, ture și analiză (calitatea datelor, accelerație/giroscop/RVI, zone, evenimente brute, analiză pe stradă), hartă tehnică (`src/dev/MapTech.tsx`), rutare, diagnostic, parametri, validare, simulare, metodologie, **strat public: generare + audit în browser** (`src/dev/PublishPage.tsx`, fără publicare), exporturi.
+- Un singur nucleu: `src/core` e folosit de ambele site-uri și de scripturi; generarea și auditul stratului public au fost mutate din scripturi în `src/core/publiclayer.ts` (ieșirile `build-layer`/`audit-layer` pe tura reală sunt identice cu cele de dinainte, în afară de data generării).
+- Stocare: aceeași origine (eric22220.github.io) → baze IndexedDB separate (`shockgrid` pentru bicicliști, neschimbată; `shockgrid-dev` pentru Dev) și cache-uri runtime cu nume diferite. Dev poate **copia** turele din baza bicicliștilor (doar citire, nu creează baza dacă nu există, nu suprascrie; `src/storage/migrate.ts`).
+- Verificări: `scripts/check-bundles.mjs` (bundle-ul bicicliștilor nu conține texte/componente tehnice, Dev e sub /ShockGridDev/), `test/two-sites.test.ts` (graful de importuri al aplicației pentru bicicliști nu atinge `src/dev`, paginile de analiză sau graficele; copierea nedistructivă).
+
 ## Raportare în 2 atingeri și măsurare în timpul navigării (15.11.2026)
 Checkpoint: tag `checkpoint-before-waze-reporting` (commit ed09862).
 - **Raportează → Groapă** pe hartă, în navigare și în tură: salvat local cu poziție, precizie, moment, tip, sursă manuală, neverificat; „Anulează” și „Detalii” în confirmare. GPS vechi/imprecis/refuzat → alegerea locului pe hartă, cu explicație (`src/services/hazard.ts`, `src/ui/components/QuickReport.tsx`).
 - **Navigare + măsurare**: un singur buton „Pornește”; cu „Contribuie cu măsurători” activat, aceeași înregistrare ca la „Ture” pornește odată cu navigarea; panoul arată doar starea măsurării, timpul, „Raportează” și „Oprește”. Șocurile nu mai apar în timpul mersului.
 - **Starea măsurării** (`src/capture/health.ts`): din frecvența reală a senzorilor, ultima mostră, GPS și vizibilitatea paginii.
 - **După tură** (`#/after/<id>`): rezumat și „Ai întâlnit o problemă pe drum?” (Da → Groapă / Denivelare / Alt obstacol; Nu; Mai târziu), o întrebare pe zonă, cel mult 5. Pe tura reală, primele întrebări sunt pe Ion Vidu și Petre Râmneanțu.
-- **ShockGrid Lab** (Mai mult → ShockGrid Lab): turele cu analiza lor, import, diagnostic, parametri, validare, simulare, exporturi; pe pagina turei, secțiunea „ShockGrid Lab” are zonele, calitatea datelor, graficul și evenimentele brute.
+- Partea tehnică a fost mutată ulterior pe site-ul separat ShockGrid Dev (vezi secțiunea de mai sus).
 - Leaflet: redesenarea canvasului după eliminarea hărții e ignorată (eroarea „clearRect of undefined” la schimbarea rapidă a ecranelor).
 - Teste: 214 publice + 6 locale pe tura reală = 220/220; 12 noi în `test/hazard-reporting.test.ts`. Browser (dev, 375×812, GPS și senzori simulați): 2 atingeri → raport, Anulează, GPS ±60 m → alegere pe hartă, navigare cu măsurare → senzori opriți → avertisment → Oprește → întrebări, fără erori în consolă. **Netestat pe telefoane fizice.**
 

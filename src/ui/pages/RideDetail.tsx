@@ -12,7 +12,7 @@ import { RideQualityCard } from '../components/RideQualityCard';
 import { RideSummaryCard } from '../components/RideSummaryCard';
 import { CLASS_COLORS, fmt, fmtLen, shareOrDownload } from '../format';
 import { Banner, Header, Stat, toast } from '../kit';
-import { go } from '../App';
+import { go } from '../nav';
 
 export function RideDetail({ id }: { id?: string }) {
   const r = useApp((s) => s.rides.find((x) => x.ride_id === id));
@@ -100,8 +100,8 @@ export function RideDetail({ id }: { id?: string }) {
           </label>
         </div>
       </details>
-      <details className="card">
-        <summary>ShockGrid Lab · analiză tehnică</summary>
+      <details className="card" open>
+        <summary>Analiză tehnică</summary>
         <div className="stack">
           {rr && rr.counts.raw > 0 && (
         <a className={`card ${unreviewed ? 'tint-warn' : ''}`} href={`#/review/${r.ride_id}`} style={{ display: 'flex', gap: 12, alignItems: 'center', textDecoration: 'none', color: 'inherit' }}>

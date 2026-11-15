@@ -9,7 +9,7 @@ import { removeReport, saveReport, useApp } from '../../state/store';
 import { Banner, Header, toast } from '../kit';
 import { gpsQuality, useLocation } from '../map/me';
 import { useLeaflet } from '../map/useLeaflet';
-import { go } from '../App';
+import { go } from '../nav';
 
 export function ReportScreen({ id, lat, lon, type: preType, why }: { id?: string; quick?: boolean; lat?: number; lon?: number; type?: string | null; why?: string | null }) {
   const existing = useApp((s) => (id && id !== 'new' ? s.reports.find((r) => r.id === id) : undefined));

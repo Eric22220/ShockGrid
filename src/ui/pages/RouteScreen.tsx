@@ -16,7 +16,7 @@ import { Banner, SnapSheet, toast, useDebounced, type Snap } from '../kit';
 import { drawComfort, pinIcon, routeLatLngs } from '../map/draw';
 import { useLocation, useMeLayer } from '../map/me';
 import { L, useLayerGroup, useLeaflet } from '../map/useLeaflet';
-import { go } from '../App';
+import { go } from '../nav';
 
 const fmtDur = (s: number) => { const t = Math.max(0, Math.floor(s)); const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), x = t % 60; return h ? `${h}:${String(m).padStart(2, '0')}:${String(x).padStart(2, '0')}` : `${m}:${String(x).padStart(2, '0')}`; };
 const PROFILE_LABEL: Record<ProfileKey, string> = { shortest: 'Cea mai scurtă', balanced: 'Alternativă', courier: 'Alternativă' };

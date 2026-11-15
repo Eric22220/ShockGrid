@@ -61,6 +61,12 @@ Trei lucruri separate: **rugozitatea continuă** (RMS pe ferestre de 2 s, singur
 - Graful nu păstrează etichetele `vehicle=*`, restricțiile orare sau `access=no` + `bicycle=yes` (căile cu `access=no/private` sunt eliminate la construirea grafului). Etichetele OSM pot fi greșite sau incomplete: **nu e o verificare juridică**; urmează semnalizarea de pe teren.
 - Fără navigație pas cu pas.
 
+## Despre cele două site-uri (15.11.2026)
+- **ShockGrid Dev e public și neautentificat.** Oricine are adresa îl poate deschide; nu conține date private, iar ce importă cineva rămâne în browserul lui. Nu există login (unul doar în frontend ar fi o falsă securitate).
+- Ambele site-uri sunt pe aceeași origine (eric22220.github.io): bazele IndexedDB sunt separate prin nume, dar orice pagină de pe origine le-ar putea citi tehnic. De aceea Dev citește baza bicicliștilor doar la cererea explicită („Copiază în Dev”).
+- Răspunsurile la zone și rapoartele nu se copiază în Dev; doar turele.
+- Dev se actualizează când rulează workflow-ul din repo-ul ShockGridDev (manual, la 6 ore sau automat după fiecare push în ShockGrid, dacă există secretul `DEV_DISPATCH_TOKEN`).
+
 ## Despre raportarea rapidă și măsurarea în timpul navigării (15.11.2026)
 - **Raport în 2 atingeri** („Raportează” → „Groapă”) doar dacă poziția GPS are sub 15 s și precizie ≤ 25 m. Altfel aplicația așteaptă până la 10 s un fix proaspăt, apoi cere alegerea locului pe hartă, cu motivul afișat; un loc ales de mână nu primește o precizie GPS inventată. Raportul e **doar pe acest telefon**, neverificat, nepublic și netrimis la Primărie (Sesizări rămâne o acțiune separată, opțională).
 - **Măsurarea în timpul navigării** pornește doar dacă utilizatorul a activat „Contribuie cu măsurători în timpul navigării” și apasă „Pornește”. Folosește același înregistrator și același nucleu de detecție ca turele și importul (niciun al doilea motor). Deschiderea hărții nu pornește nicio înregistrare.

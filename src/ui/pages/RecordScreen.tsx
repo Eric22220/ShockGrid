@@ -8,7 +8,7 @@ import { fmt, fmtLen, shareOrDownload } from '../format';
 import { Banner, Header, Stat, toast } from '../kit';
 import { gpsQuality, useLocation } from '../map/me';
 import { L, alive, useLayerGroup, useLeaflet } from '../map/useLeaflet';
-import { go } from '../App';
+import { go } from '../nav';
 
 const dur = (s: number) => { const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = Math.floor(s % 60); return h ? `${h}:${String(m).padStart(2, '0')}:${String(x).padStart(2, '0')}` : `${m}:${String(x).padStart(2, '0')}`; };
 

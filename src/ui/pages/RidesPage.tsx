@@ -5,9 +5,10 @@ import { recDelete, recSessions } from '../../storage/idb';
 import { useApp } from '../../state/store';
 import { fmtLen } from '../format';
 import { Banner, Item, toast } from '../kit';
-import { go } from '../App';
+import { go } from '../nav';
 
-export function RidesPage() {
+/** `dev`: varianta din ShockGrid Dev (import, comparare, evenimente de verificat) */
+export function RidesPage({ dev = false }: { dev?: boolean }) {
   const rides = useApp((s) => s.rides);
   const reviews = useApp((s) => s.reviews);
   const recording = useSyncExternalStore(subscribeRide, rideActive);
@@ -16,20 +17,20 @@ export function RidesPage() {
   const sorted = [...rides].sort((a, b) => b.processed.meta.start_ms - a.processed.meta.start_ms);
   return (
     <main className="screen"><div className="wrap stack">
-      <h1>Ture</h1>
+      <h1>{dev ? 'Ture locale' : 'Turele mele'}</h1>
       {recording ? (
         <a className="card tint-danger" href="#/record" style={{ display: 'block', textDecoration: 'none', color: 'inherit' }}>
           <div className="row"><span className="chip live"><span className="rec-dot" /> În curs</span><b>Tura ta se înregistrează</b></div>
           <p className="small" style={{ margin: '8px 0 0' }}>Deschide ecranul turei</p>
         </a>
       ) : (
-        <div className="grid2">
+        <div className={dev ? 'grid2' : ''}>
           <a className="card tint-primary" href="#/record" style={{ textDecoration: 'none', color: 'inherit' }}>
             <Play style={{ color: 'var(--primary)' }} /><h3 style={{ marginTop: 8 }}>Pornește o tură</h3><p className="xs muted" style={{ margin: 0 }}>Înregistrează vibrațiile cu acest telefon, ecranul aprins</p>
           </a>
-          <a className="card tint-comfort" href="#/import" style={{ textDecoration: 'none', color: 'inherit' }}>
+          {dev && <a className="card tint-comfort" href="#/import" style={{ textDecoration: 'none', color: 'inherit' }}>
             <Upload style={{ color: 'var(--comfort)' }} /><h3 style={{ marginTop: 8 }}>Importă</h3><p className="xs muted" style={{ margin: 0 }}>ZIP din Sensor Logger (merge și cu ecranul blocat)</p>
-          </a>
+          </a>}
         </div>
       )}
       {orphans.map((s) => (
@@ -43,7 +44,7 @@ export function RidesPage() {
       ))}
       <div className="row spread">
         <div className="section-label" style={{ margin: '8px 4px 0' }}>Istoric ({rides.length})</div>
-        {rides.length >= 2 && <a className="btn sm ghost" href="#/compare"><GitCompare /> Compară</a>}
+        {dev && rides.length >= 2 && <a className="btn sm ghost" href="#/compare"><GitCompare /> Compară</a>}
       </div>
       {!rides.length ? (
         <div className="empty card"><Bike aria-hidden="true" /><p>Încă nu ai ture pe acest telefon.</p></div>
@@ -56,12 +57,12 @@ export function RidesPage() {
               <Item key={r.ride_id} href={`#/ride/${r.ride_id}`} icon={p.meta.source === 'sensorlogger' ? <FileDown /> : <Bike />} tone={p.meta.source === 'sensorlogger' ? 'comfort' : 'primary'}
                 title={p.meta.label || r.file_name.replace(/\.zip$/i, '')}
                 sub={`${new Date(p.meta.start_ms).toLocaleString('ro-RO', { dateStyle: 'medium', timeStyle: 'short' })} · ${fmtLen(p.summary.distance_m)}${p.meta.source === 'sensorlogger' ? ' · Sensor Logger' : ''}`}
-                right={unreviewed > 0 ? <span className="badge warn">{unreviewed} de verificat</span> : undefined} />
+                right={dev && unreviewed > 0 ? <span className="badge warn">{unreviewed} de verificat</span> : undefined} />
             );
           })}
         </div>
       )}
-      <p className="xs muted">Turele rămân doar pe acest telefon. Nimic nu se încarcă automat.</p>
+      <p className="xs muted">{dev ? 'Turele stau doar în acest browser (baza ShockGrid Dev). Nimic nu se încarcă automat.' : 'Turele rămân doar pe acest telefon. Nimic nu se încarcă automat.'}</p>
     </div></main>
   );
 }

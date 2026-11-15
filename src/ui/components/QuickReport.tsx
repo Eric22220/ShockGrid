@@ -8,7 +8,7 @@ import { markRide } from '../../services/ride';
 import { removeReport, saveReport } from '../../state/store';
 import { toast } from '../kit';
 import { useLocation } from '../map/me';
-import { go } from '../App';
+import { go } from '../nav';
 
 /** butonul flotant (pe hartă) sau butonul mare din panoul de navigare/tură */
 export function ReportButton({ variant = 'fab' }: { variant?: 'fab' | 'panel' }) {

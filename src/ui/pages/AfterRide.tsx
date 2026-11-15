@@ -88,7 +88,7 @@ export function AfterRide({ id }: { id?: string }) {
           {deferred > 0 && ` ${deferred} ${deferred === 1 ? 'întrebare amânată rămâne' : 'întrebări amânate rămân'} pe pagina turei.`}
         </Banner>
       )}
-      {all.length > MAX_PROMPTS && <p className="xs muted">Îți arătăm doar cele mai clare {MAX_PROMPTS} locuri. Restul sunt în ShockGrid Lab (pagina turei → ShockGrid Lab).</p>}
+      {all.length > MAX_PROMPTS && <p className="xs muted">Îți arătăm cel mult {MAX_PROMPTS} locuri odată; celelalte rămân pe pagina turei, pentru altă dată.</p>}
       <div className="grid2">
         <a className="btn primary" href={`#/ride/${id}`}><Check /> Gata</a>
         <a className="btn" href={`#/map/${id}`}><MapIcon /> Pe hartă</a>

@@ -285,7 +285,6 @@ table { border-collapse: collapse; width: 100%; font-size: 14px; }
 th, td { text-align: left; padding: 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
 .tablewrap { overflow-x: auto; }
 .chart { width: 100%; }
-.uplot, .u-legend { color: var(--fg); font-family: var(--font); font-size: 12px; }
 .toast { position: fixed; z-index: 1500; left: 50%; bottom: calc(var(--nav-h) + var(--safe-b) + 16px); transform: translateX(-50%); background: var(--fg); color: var(--bg); padding: 12px 18px; border-radius: 12px; font-weight: 600; box-shadow: var(--shadow-2); animation: sheet-in .25s var(--ease); max-width: calc(100% - 32px); }
 .photo-thumb { width: 100%; max-height: 220px; object-fit: cover; border-radius: var(--radius); }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }

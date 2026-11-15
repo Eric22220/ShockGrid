@@ -3,7 +3,7 @@ import { useRef, useState } from 'react';
 import type { DeclaredSurface } from '../../core/types';
 import { DuplicateRideError, importFile } from '../../state/store';
 import { Banner, Header } from '../kit';
-import { go } from '../App';
+import { go } from '../nav';
 
 export function ImportPage() {
   const input = useRef<HTMLInputElement | null>(null);

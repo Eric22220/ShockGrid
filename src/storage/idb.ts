@@ -1,3 +1,4 @@
+import { DB_NAME } from '../appkind';
 // IndexedDB: turele procesate (private, doar pe dispozitiv), fișierul original, setările, înregistrarea în curs.
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import type { RideInterval } from '../core/corridor';
@@ -54,7 +55,7 @@ interface SGDB extends DBSchema {
 let dbp: Promise<IDBPDatabase<SGDB>> | null = null;
 export function db() {
   if (!dbp)
-    dbp = openDB<SGDB>('shockgrid', 2, {
+    dbp = openDB<SGDB>(DB_NAME, 2, {
       upgrade(d, oldVersion) {
         if (oldVersion < 1) {
           d.createObjectStore('rides', { keyPath: 'ride_id' });

@@ -6,11 +6,9 @@
 // fără primii/ultimii 200 m și nimic la < 250 m în linie dreaptă de începutul/sfârșitul fiecărei ture. Licență ODbL.
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { aggregate, buildSnapshot, diffLayers, toContribution, type Thresholds } from '../src/core/aggregate';
-import { DEFAULT_CONFIG } from '../src/core/config';
+import { aggregate, diffLayers, toContribution, type Thresholds } from '../src/core/aggregate';
+import { buildPublicLayer } from '../src/core/publiclayer';
 import { PRIVACY_RADIUS_M } from '../src/core/publish';
-import { comfortGeoJSON, zoneRows, zonesGeoJSON } from '../src/core/export';
-import { percentileSorted } from '../src/core/stats';
 import { loadGraphIfExists } from './lib';
 import { expandArgs, loadRides } from './rides';
 
@@ -28,14 +26,10 @@ if (!graph) { console.error('Lipsește public/data/graph-timisoara.json (ruleaz�
 const rides = loadRides(files.length ? files : expandArgs(['rides']), graph);
 if (!rides.length) { console.error('Nicio tură. Copiază exporturile în rides/ și rulează: npm run build-layer -- rides/*.zip'); process.exit(1); }
 
-// pragurile = percentilele 20/40/60/80 ale ferestrelor valide ale echipei (calibrare relativă) [EXPERIMENTAL]
-const all = rides.flatMap((r) => r.p.windows.filter((w) => w.valid).map((w) => w.rms)).sort((a, b) => a - b);
-const thresholds: Thresholds | null = all.length >= 30 ? ([20, 40, 60, 80].map((q) => Math.round(percentileSorted(all, q) * 1000) / 1000) as Thresholds) : null;
-const thSrc = thresholds ? `percentilele 20/40/60/80 din ${all.length} ferestre valide (${rides.length} ${rides.length === 1 ? 'tură' : 'ture'}); clase relative, necalibrate absolut` : 'implicite (prea puține ferestre)';
-// doar platformele, niciodată numele dispozitivului (Sensor Logger salvează numele dat de utilizator telefonului)
-const platforms = [...new Set(rides.map((r) => r.p.meta.platform).filter(Boolean))].join(', ');
-const note = opt('--note') ?? `${rides.length} ${rides.length === 1 ? 'tură' : 'ture'}${platforms ? ` (${platforms})` : ''}`;
-const snap = buildSnapshot(rides.map((r) => r.p), DEFAULT_CONFIG, note, thresholds, thSrc, { exploratory, shocks, rules: { trim_m: DEFAULT_CONFIG.publish_trim_m, radius_m: radius }, geometry: (e) => graph.geometry(e) });
+// aceeași implementare ca în ShockGrid Dev (src/core/publiclayer.ts): praguri, notă fără nume de dispozitive, tăieri
+const { snap, files: outFiles } = buildPublicLayer(rides.map((r) => r.p), graph, { exploratory, shocks, radius_m: radius, note: opt('--note') });
+const thresholds = snap.meta.thresholds as Thresholds | null;
+const thSrc = snap.meta.thresholds_source;
 if (radius < PRIVACY_RADIUS_M) console.warn(`ATENȚIE: raza de confidențialitate redusă la ${radius} m (implicit ${PRIVACY_RADIUS_M} m).`);
 
 // diferența înainte/după pentru fiecare tură
@@ -52,10 +46,7 @@ contribs.forEach((c, i) => {
 
 const layer = aggregate({ snapshot: snap, rides: [], surfaceKindOf: kind, version: 1 });
 mkdirSync(out, { recursive: true });
-writeFileSync(join(out, 'comfort-layer.json'), JSON.stringify(snap));
-writeFileSync(join(out, 'comfort-layer.geojson'), JSON.stringify(comfortGeoJSON(layer, graph)));
-writeFileSync(join(out, 'shock-zones.json'), JSON.stringify({ meta: { license: 'ODbL-1.0', attribution: '© OpenStreetMap contributors', processing_version: DEFAULT_CONFIG.processing_version }, zones: zoneRows(layer) }));
-writeFileSync(join(out, 'shock-zones.geojson'), JSON.stringify(zonesGeoJSON(layer)));
+for (const [name, text] of Object.entries(outFiles)) writeFileSync(join(out, name), text);
 const st = [...layer.edges.values()];
 console.log(`\nStrat: ${rides.length} ture, ${snap.edges.length} muchii (${st.filter((e) => e.status === 'MEASURED').length} MEASURED, ${st.filter((e) => e.status === 'LOW_CONFIDENCE').length} LOW_CONFIDENCE, ${st.filter((e) => e.status === 'UNKNOWN' && e.explore).length} doar explorate), ${snap.shocks.length} șocuri (${shocks}), ${layer.zones.length} zone.`);
 console.log(`Praguri: ${JSON.stringify(thresholds)} (${thSrc})`);
