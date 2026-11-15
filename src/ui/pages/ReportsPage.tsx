@@ -9,7 +9,7 @@ export function ReportsPage() {
   const drafts = reports.filter((r) => r.status === 'draft');
   return (
     <main className="screen"><div className="wrap stack">
-      <Header title="Rapoartele mele" back="#/more" right={<a className="icon-btn flat" href="#/report/new" aria-label="Raport nou"><Plus /></a>} />
+      <Header title="Rapoarte (acest browser)" back="#/more/advanced" right={<a className="icon-btn flat" href="#/report/new" aria-label="Raport nou"><Plus /></a>} />
       <Banner kind="info"><b>{VISIBILITY_LABEL.device}.</b> ShockGrid nu are încă o bază comună de rapoarte: nimeni altcineva nu le vede. Le poți exporta sau folosi pentru o sesizare oficială.</Banner>
       {drafts.length > 0 && <p className="small"><b>{drafts.length}</b> {drafts.length === 1 ? 'loc marcat așteaptă' : 'locuri marcate așteaptă'} completarea.</p>}
       {!reports.length ? (

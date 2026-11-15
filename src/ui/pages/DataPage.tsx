@@ -11,7 +11,7 @@ export function DataPage() {
   const pub = snapshotRideCount(snapshot);
   return (
     <main className="screen"><div className="wrap stack">
-      <Header title="Date și surse" back="#/more" />
+      <Header title="Date și surse" back="#/more/advanced" />
       <h2>Ce e public și ce e doar al tău</h2>
       <div className="card stack">
         <div><span className="badge comfort">Public</span> <b>Stratul publicat de echipă</b><p className="small muted" style={{ margin: '4px 0 0' }}>{pub ? `${pub} ${pub === 1 ? 'tură' : 'ture'} · ${snapshot!.edges.length} segmente · versiunea ${snapshot!.meta.generated_at.slice(0, 16).replace('T', ' ')} UTC${snapshot!.meta.includes_exploratory ? ' · include explorare lentă' : ''}.` : 'Încă nicio tură publicată.'} Conține doar valori agregate pe segmente de stradă: fără trasee, fără ore, fără telefoane, fără începutul și sfârșitul turelor.</p></div>

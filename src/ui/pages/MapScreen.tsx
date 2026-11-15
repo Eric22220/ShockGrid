@@ -13,7 +13,7 @@ import { distToEdges } from '../../core/corridor';
 import { useLocation, useMeLayer } from '../map/me';
 import { useLayerGroup, useLeaflet } from '../map/useLeaflet';
 import { go } from '../nav';
-import { ReportButton } from '../components/QuickReport';
+import { ReportButton, type ReportHooks } from '../components/QuickReport';
 
 type Sel = { edge?: EdgeAgg; zone?: ShockZone; report?: LocalReport; layers?: true } | null;
 
@@ -24,6 +24,7 @@ let rememberLoc = false;
 export interface MapTech {
   edge: (p: { e: EdgeAgg; len: number; osm: string; version: string; zones: ShockZone[]; manual: number }) => ReactNode;
   zone: (z: ShockZone) => ReactNode;
+  reportHooks?: ReportHooks;
 }
 
 export function MapScreen({ focus, tech }: { focus?: string; tech?: MapTech }) {
@@ -92,7 +93,7 @@ export function MapScreen({ focus, tech }: { focus?: string; tech?: MapTech }) {
           <button className="chip" onClick={() => setSel({ layers: true })}>Încă nu sunt străzi măsurate</button>
         ) : null}
       </div>
-      {!sel && <ReportButton />}
+      {!sel && <ReportButton hooks={tech?.reportHooks} />}
 
       {sel?.layers && (
         <Sheet title="Harta confortului" onClose={() => setSel(null)}>

@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { requestMotionPermission, type SourceState } from '../../capture/recorder';
 import { monitorHealth } from '../../capture/health';
 import { ReportButton } from '../components/QuickReport';
-import { discardRide, pauseRide, resumeRide, retryRideSources, rideActive, rideStats, startRide, stopRide, subscribeRide } from '../../services/ride';
+import { discardRide, markRide, pauseRide, resumeRide, retryRideSources, rideActive, rideStats, startRide, stopRide, subscribeRide } from '../../services/ride';
 import { fmt, fmtLen, shareOrDownload } from '../format';
 import { Banner, Header, Stat, toast } from '../kit';
 import { gpsQuality, useLocation } from '../map/me';
@@ -153,7 +153,7 @@ function LiveView({ onStop }: { onStop: () => void }) {
           <Stat v={fmtLen(s.live.distance)} l="distanță" />
           <Stat v={dur(s.elapsed_s)} l="durată" />
         </div>
-        <div style={{ margin: '10px 0' }}><ReportButton variant="panel" /></div>
+        <div style={{ margin: '10px 0' }}><ReportButton variant="panel" hooks={{ onSaved: (r) => markRide(`raport ${r.type}`), detailsHref: (id) => `/report/${id}` }} /></div>
         {!confirmStop ? (
           <div className="grid2">
             {paused ? <button className="btn" onClick={resumeRide}><Play /> Reia</button> : <button className="btn" onClick={pauseRide}><Pause /> Pauză</button>}

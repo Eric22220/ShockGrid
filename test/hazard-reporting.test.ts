@@ -33,7 +33,7 @@ describe('1–2. raportare manuală', () => {
     expect(r.description).toBe('');
     expect(r.photo).toBeNull();
     expect(reportVisibility(r)).toBe('device');
-    expect(QUICK_TYPES.map((q) => q.label)).toEqual(['Groapă', 'Denivelare', 'Obstacol', 'Capac de canal', 'Șine / rost', 'Altă problemă']);
+    expect(QUICK_TYPES.map((q) => q.label)).toEqual(['Groapă', 'Denivelare / Prag', 'Obstacol']);
   });
   it('GPS imprecis: nu salvează pe o poziție greșită, cere alegerea locului pe hartă', () => {
     const st = quickReducer({ s: 'open' }, { a: 'type', type: 'groapa', fix: { ...fresh, acc: FIX_MAX_ACC_M + 15 }, now: NOW, status: 'active' });

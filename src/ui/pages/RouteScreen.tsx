@@ -1,14 +1,11 @@
 import { ArrowDownUp, ArrowLeft, Check, History, LocateFixed, MapPin, Navigation, Search, Square, X } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { ProfileKey, RouteOptions } from '../../core/route';
 import { fmtPct, planRoutes, routeEvidence, type PlanResult, type RouteOptionView } from '../../core/routeplan';
 import { navProgress } from '../../core/navprogress';
-import { requestMotionPermission } from '../../capture/recorder';
 import { geocoder, GeocodeError, buildStreetIndex, nearestStreetName, searchStreets, type Place, type StreetEntry } from '../../services/geocode';
 import { locationPermission, type LocState } from '../../services/location';
-import { rideActive, rideStats, startRide, stopRide, subscribeRide } from '../../services/ride';
-import { monitorHealth } from '../../capture/health';
-import { ReportButton } from '../components/QuickReport';
+import { ReportButton, type ReportHooks } from '../components/QuickReport';
 import { addRecent, clearRecent, getRouter, setPlan, snapNode, updateSettings, useApp } from '../../state/store';
 import { t } from '../../i18n/ro';
 import { CLASS_COLORS, fmtLen } from '../format';
@@ -23,13 +20,26 @@ const PROFILE_LABEL: Record<ProfileKey, string> = { shortest: 'Cea mai scurtă',
 const MY_LOC = (lat = 0, lon = 0): Place => ({ id: 'me', name: 'Locația mea', detail: 'GPS', lat, lon, kind: 'mylocation', source: 'gps' });
 let streetIndexCache: { g: unknown; idx: StreetEntry[] } | null = null;
 
-export function RouteScreen({ focus }: { focus: string | null }) {
+/** Măsurarea în timpul navigării există doar în ShockGrid Dev: injectată aici, ca aplicația pentru bicicliști
+ * să nu conțină înregistratorul de senzori. */
+export interface NavTech {
+  /** apelat sincron din click-ul „Pornește” (iOS cere permisiunea de mișcare din atingere) */
+  onStart: (destName: string) => void;
+  isActive: () => boolean;
+  /** oprește măsurarea și duce la rezultatul ei */
+  onStop: (progress: (stage: string) => void) => Promise<void>;
+  Status: () => JSX.Element | null;
+  SheetControl: () => JSX.Element;
+  reportHooks?: ReportHooks;
+}
+
+export function RouteScreen({ focus, tech }: { focus: string | null; tech?: NavTech }) {
   const graph = useApp((s) => s.graph);
   const layer = useApp((s) => s.layer);
   const plan = useApp((s) => s.plan);
   const settings = useApp((s) => s.settings);
   const reports = useApp((s) => s.reports);
-  const [editing, setEditing] = useState<'origin' | 'dest' | null>(focus === 'dest' && !plan.dest ? 'dest' : null);
+  const [editing, setEditing] = useState<'origin' | 'dest' | null>(focus === 'dest' ? 'dest' : null); // „Unde mergi?” deschide mereu căutarea
   const [picking, setPicking] = useState<'origin' | 'dest' | null>(null);
   const [selected, setSelected] = useState<ProfileKey>('shortest');
   const [nav, setNav] = useState(false);
@@ -71,7 +81,7 @@ export function RouteScreen({ focus }: { focus: string | null }) {
   const chosen = result?.options.find((o) => o.key === selected) ?? result?.options[0] ?? null;
   const routePts = useMemo(() => (graph && chosen ? routeLatLngs(graph, chosen.r.edges) : []), [graph, chosen]);
 
-  useLayerGroup(map, (g) => { if (graph) drawComfort(g, graph, layer, null, { dim: true, explore: false }); }, [graph, layer]);
+  useLayerGroup(map, (g) => { if (graph) drawComfort(g, graph, layer, null, { dim: true, explore: false, uncertain: tech ? true : settings.showUncertain }); }, [graph, layer, settings.showUncertain]);
   const fitted = useRef('');
   useLayerGroup(map, (g) => {
     if (!graph || !result) { if (A) L.marker(A, { icon: pinIcon('A', '#1857f5') }).addTo(g); if (B) L.marker(B, { icon: pinIcon('B', '#c2261b') }).addTo(g); return; }
@@ -115,35 +125,21 @@ export function RouteScreen({ focus }: { focus: string | null }) {
 
   const swap = () => { void setPlan({ origin: plan.dest, dest: plan.origin }); fitted.current = ''; };
 
-  // Navigarea și măsurarea merg împreună: dacă utilizatorul a ales „Contribuie cu măsurători”, tura pornește
-  // odată cu navigarea (aceeași înregistrare ca în „Ture”), altfel doar urmărim poziția pe rută.
   const [navStart, setNavStart] = useState(0);
   const [stopping, setStopping] = useState<string | null>(null);
   const startNav = () => {
-    if (settings.contribute && !rideActive()) {
-      const perm = requestMotionPermission(); // iOS: prima instrucțiune din handlerul click-ului
-      perm.then(async (p) => {
-        if (p !== 'granted') toast(p === 'unsupported' ? 'Browserul nu oferă senzori de mișcare: se salvează doar traseul.' : 'Fără acces la senzorii de mișcare: se salvează doar traseul.');
-        await startRide({ label: `Spre ${plan.dest?.name ?? 'destinație'}`, device: '', bike: '', mount: '', navigation: true });
-      }).catch((e) => toast((e as Error).message));
-    }
+    tech?.onStart(plan.dest?.name ?? 'destinație'); // Dev: pornește și măsurarea, dacă e activată
     setNav(true);
     setFollowNav(true);
     setNavStart(Date.now());
   };
   const endNav = async () => {
-    if (!rideActive()) { setNav(false); return; }
-    setStopping('Se salvează…');
-    try {
-      const r = await stopRide((stage) => setStopping(stage));
-      setNav(false);
-      if (r.rideId) go(`/after/${r.rideId}`);
-      else if (r.empty) toast('Nu s-a măsurat nimic pe drum (senzori sau GPS indisponibili).');
-      else toast(`Tura e păstrată pe telefon, dar analiza a eșuat: ${r.error ?? 'eroare necunoscută'}`);
-    } finally { setStopping(null); }
+    if (tech?.isActive()) {
+      setStopping('Se salvează…');
+      try { await tech.onStop((stage) => setStopping(stage)); } finally { setStopping(null); }
+    }
+    setNav(false);
   };
-  const recording = useSyncExternalStore(subscribeRide, rideActive);
-  const live = useSyncExternalStore(subscribeRide, rideStats);
   const [, tick] = useState(0);
   useEffect(() => { if (!nav) return; const h = setInterval(() => tick((x) => x + 1), 1000); return () => clearInterval(h); }, [nav]);
 
@@ -169,6 +165,7 @@ export function RouteScreen({ focus }: { focus: string | null }) {
       )}
       {!picking && !nav && (
         <div className="planner">
+          <button className="icon-btn flat back" onClick={() => go('/')} aria-label="Înapoi la hartă"><ArrowLeft /></button>
           <div className="rail" aria-hidden="true"><i className="o" /><span className="dots" /><i className="d" /></div>
           <div className="fields">
             <button className={`pfield ${plan.origin ? '' : 'empty'}`} onClick={() => setEditing('origin')} aria-label={`De unde pleci: ${plan.origin?.name ?? 'nealeasă'}`}>
@@ -184,7 +181,7 @@ export function RouteScreen({ focus }: { focus: string | null }) {
       {nav && (
         <div className="planner" style={{ padding: 12 }}>
           <div className="grow">
-            <div className="small muted">Te urmărim pe ruta spre {plan.dest?.name} · fără indicații de viraj</div>
+            <div className="small muted">Spre {plan.dest?.name}</div>
             <div style={{ fontSize: 22, fontWeight: 700 }}>{navInfo ? (navInfo.arrived ? 'Ai ajuns' : `${navInfo.uncertain ? '~' : ''}${fmtLen(navInfo.rem)} · ${Math.max(1, Math.round(navInfo.rem / 250))} min`) : loc.message ?? 'Se caută poziția…'}</div>
             {navInfo?.off && <div className="small" style={{ color: 'var(--warn)', fontWeight: 600 }}>Ești în afara rutei</div>}
             {navInfo?.uncertain && <div className="small" style={{ color: 'var(--warn)', fontWeight: 600 }}>Aproape de destinație · GPS imprecis (±{Math.round(loc.fix?.acc ?? 0)} m)</div>}
@@ -197,13 +194,11 @@ export function RouteScreen({ focus }: { focus: string | null }) {
           {stopping ? <p className="small" role="status" style={{ margin: '4px 0 8px' }}>{stopping}</p> : (
             <>
               <div className="row spread nowrap" style={{ marginBottom: 10 }}>
-                {recording && live ? (() => { const h = monitorHealth(live); return <span className={`health ${h.level}`} role="status" title={h.detail ?? undefined}><i aria-hidden="true" /> {h.text}</span>; })()
-                  : <span className="health" role="status">Fără măsurare</span>}
-                <span className="small muted num">{fmtDur((Date.now() - navStart) / 1000)}</span>
+                {tech ? <tech.Status /> : <span className="small muted">În mers</span>}
+                <span className="small muted num" aria-label="timp scurs">{fmtDur((Date.now() - navStart) / 1000)}</span>
               </div>
-              {recording && live && monitorHealth(live).detail && <div className="alert-strip" role="alert" style={{ marginBottom: 10 }}>{monitorHealth(live).detail}</div>}
               <div className="grid2">
-                <ReportButton variant="panel" />
+                <ReportButton variant="panel" hooks={tech?.reportHooks} />
                 <button className="btn danger lg" onClick={() => void endNav()}><Square /> Oprește</button>
               </div>
             </>
@@ -214,7 +209,7 @@ export function RouteScreen({ focus }: { focus: string | null }) {
         <RouteSheet
           plan={plan} result={result} selected={selected} onSelect={setSelected} graphReady={!!graph}
           waitingGps={usesMe && !originFix} loc={loc} snap={snap} onSnap={setSnap} onHeight={setSheetH}
-          onStart={startNav} contribute={settings.contribute} onRecenter={() => { if (loc.fix) setOriginFix([loc.fix.lat, loc.fix.lon]); }}
+          onStart={startNav} extra={tech ? <tech.SheetControl /> : null} dev={!!tech} onRecenter={() => { if (loc.fix) setOriginFix([loc.fix.lat, loc.fix.lon]); }}
           onEditOrigin={() => setEditing('origin')} onClear={() => { void setPlan({ ...plan, dest: null }); setSnap('peek'); }}
           route={settings.route}
         />
@@ -223,15 +218,15 @@ export function RouteScreen({ focus }: { focus: string | null }) {
   );
 }
 
-function RouteSheet({ plan, result, selected, onSelect, graphReady, waitingGps, loc, snap, onSnap, onHeight, onStart, contribute, onRecenter, onEditOrigin, onClear, route }: {
+function RouteSheet({ plan, result, selected, onSelect, graphReady, waitingGps, loc, snap, onSnap, onHeight, onStart, extra, dev, onRecenter, onEditOrigin, onClear, route }: {
   plan: { origin: Place | null; dest: Place | null }; result: PlanResult | null; selected: ProfileKey; onSelect: (k: ProfileKey) => void; graphReady: boolean;
   waitingGps: boolean; loc: LocState; snap: Snap; onSnap: (s: Snap) => void; onHeight: (h: number) => void;
-  onStart: () => void; contribute: boolean; onRecenter: () => void; onEditOrigin: () => void; onClear: () => void; route: RouteOptions;
+  onStart: () => void; extra: ReactNode; dev: boolean; onRecenter: () => void; onEditOrigin: () => void; onClear: () => void; route: RouteOptions;
 }) {
   const simple = (title: string, body: ReactNode) => (
     <SnapSheet label={title} snap="peek" onSnap={() => {}} onHeight={onHeight} peek={<div className="stack" style={{ paddingTop: 2 }}><h2 className="sheet-title">{title}</h2>{body}</div>} />
   );
-  if (!plan.dest || !plan.origin) return simple('Planifică un traseu', <p className="small muted">Alege de unde pleci și unde mergi. Îți arătăm cea mai scurtă rută. O alternativă apare doar unde avem destule măsurători.</p>);
+  if (!plan.dest || !plan.origin) return simple('Planifică un traseu', <p className="small muted">Alege de unde pleci și unde mergi.</p>);
   if (!graphReady) return simple('Se încarcă străzile…', <div className="skeleton" aria-hidden="true" />);
   if (waitingGps) {
     const failed = loc.status === 'denied' || loc.status === 'unsupported' || loc.status === 'insecure' || loc.status === 'unavailable' || loc.status === 'timeout';
@@ -265,31 +260,30 @@ function RouteSheet({ plan, result, selected, onSelect, graphReady, waitingGps, 
         {result.options.length > 1 && <span className="badge primary">{recommended ? `Recomandată: ${PROFILE_LABEL[chosen.key].toLowerCase()}` : PROFILE_LABEL[chosen.key]}</span>}
       </div>
       <button className="btn primary block lg" onClick={onStart}><Navigation /> Pornește</button>
-      <label className="switch" style={{ marginTop: 4 }}><input type="checkbox" checked={contribute} onChange={(e) => updateSettings({ contribute: e.target.checked })} /><span className="small">Contribuie cu măsurători în timpul navigării</span></label>
+      {extra}
     </div>
   );
   return (
     <SnapSheet label="Rute" snap={snap} onSnap={onSnap} onHeight={onHeight} peek={peek}>
       <div className="stack">
-        <Banner kind={v.kind === 'better' ? 'ok' : v.kind === 'same' ? 'info' : 'warn'}>{v.text}</Banner>
+        {(dev || v.kind === 'better') && <Banner kind={v.kind === 'better' ? 'ok' : v.kind === 'same' ? 'info' : 'warn'}>{v.text}</Banner>}
         <div role="radiogroup" aria-label="Alternative de rută">
-          {result.options.map((o) => <RouteCard key={o.key} o={o} on={o.key === chosen.key} recommended={v.kind === 'better' && o.key === v.best} onClick={() => onSelect(o.key)} />)}
+          {result.options.map((o) => <RouteCard key={o.key} dev={dev} o={o} on={o.key === chosen.key} recommended={v.kind === 'better' && o.key === v.best} onClick={() => onSelect(o.key)} />)}
         </div>
-        {result.options.length === 1 && (v.kind === 'nodata' || v.kind === 'insufficient') && <p className="xs muted">Alternativele mai lungi nu sunt afișate: fără măsurători nu putem spune care e mai confortabilă.</p>}
-        <p className="xs muted" style={{ marginTop: 12 }}><b>Pornește</b>: punctul tău pe rută și distanța rămasă, fără indicații de viraj. Cu <b>Contribuie cu măsurători</b> pornit, telefonul măsoară și vibrațiile pe drum (doar cu aplicația deschisă și ecranul aprins; se salvează doar pe telefon). La final te întrebăm, pe scurt, despre locurile cu șocuri.</p>
-        <p className="xs muted">Confortul nu înseamnă siguranță: alege mereu drumul pe care îl consideri sigur.</p>
+        {dev && result.options.length === 1 && (v.kind === 'nodata' || v.kind === 'insufficient') && <p className="xs muted">Alternativele mai lungi nu sunt afișate: fără măsurători nu putem spune care e mai confortabilă.</p>}
+        <p className="xs muted" style={{ marginTop: 12 }}>Doar căi permise bicicletelor. Confortul nu înseamnă siguranță.</p>
         {plan.origin.kind === 'mylocation' && <button className="btn sm ghost block" onClick={onRecenter}>Pornește de la poziția mea actuală</button>}
-        <details className="card">
+        {dev && <details className="card">
           <summary>Opțiuni de rutare</summary>
           <label className="switch"><input type="checkbox" checked={route.useOsmSurface} onChange={(e) => updateSettings({ route: { ...route, useOsmSurface: e.target.checked } })} />Ține cont de pavajul declarat în OpenStreetMap (estimat, nu măsurat)</label>
           <p className="xs muted">Rutele folosesc doar căi permise bicicletelor: piste, străzi și alei marcate pentru biciclete. Trotuarele obișnuite nu sunt folosite.</p>
-        </details>
+        </details>}
       </div>
     </SnapSheet>
   );
 }
 
-function RouteCard({ o, on, recommended, onClick }: { o: RouteOptionView; on: boolean; recommended: boolean; onClick: () => void }) {
+function RouteCard({ o, on, recommended, onClick, dev }: { o: RouteOptionView; on: boolean; recommended: boolean; onClick: () => void; dev: boolean }) {
   const known = Object.values(o.knownByClass).reduce((a, b) => a + b, 0);
   return (
     <button className="route-card" role="radio" aria-checked={on} aria-pressed={on} onClick={onClick}>
@@ -299,8 +293,8 @@ function RouteCard({ o, on, recommended, onClick }: { o: RouteOptionView; on: bo
         {(['A', 'B', 'C', 'D', 'E'] as const).map((c) => <i key={c} style={{ width: `${(100 * o.knownByClass[c]) / o.s.length}%`, background: CLASS_COLORS[c] }} />)}
       </div>
       <div className="xs" style={{ color: 'var(--fg-2)' }}>
-        {known > 0 ? <>Măsurat {fmtPct(o.s.measured_pct)} · confortabil (A–B) {Math.round(o.knownGoodPct ?? 0)}% din partea măsurată</> : 'Niciun segment măsurat'}
-        {' · '}necunoscut {fmtPct(o.s.unknown_pct)}
+        {dev ? <>{known > 0 ? <>Măsurat {fmtPct(o.s.measured_pct)} · confortabil (A–B) {Math.round(o.knownGoodPct ?? 0)}% din partea măsurată</> : 'Niciun segment măsurat'}{' · '}necunoscut {fmtPct(o.s.unknown_pct)}</>
+          : known > 0 ? <>Confort cunoscut pe {fmtPct(o.s.measured_pct)} din drum</> : 'Confort necunoscut'}
         {(o.problems.zones > 0 || o.problems.reports > 0) && <span style={{ color: 'var(--danger)', fontWeight: 650 }}> · {o.problems.zones + o.problems.reports} probleme cunoscute</span>}
       </div>
       <span className="sr-only">{(['A', 'B', 'C', 'D', 'E'] as const).map((c) => `${t.classShort[c]} ${Math.round(o.knownByClass[c])} metri`).join(', ')}</span>
@@ -358,7 +352,7 @@ function SearchOverlay({ field, onClose, onPick, onMap }: { field: 'origin' | 'd
           {remote.error && <Banner kind="warn">{remote.error} Poți alege o stradă din lista de mai sus sau un punct pe hartă.</Banner>}
           {nothing && !remote.error && <Banner kind="warn">Nu am găsit „{q}” în Timișoara. Încearcă alt nume sau alege punctul pe hartă.</Banner>}
           {q.trim().length > 0 && q.trim().length < 3 && local.length === 0 && <p className="small muted">Scrie cel puțin 3 litere.</p>}
-          <p className="xs muted" style={{ marginTop: 16 }}>Străzile se caută local, din OpenStreetMap. Adresele și locurile se caută prin serviciul public Photon (komoot): textul căutat e trimis acolo; locația ta nu. Serviciul e gratuit și poate fi uneori indisponibil.</p>
+          <p className="xs muted" style={{ marginTop: 16 }}>Adresele se caută prin Photon (OpenStreetMap). Locația ta nu e trimisă.</p>
         </div>
       </div>
     </div>

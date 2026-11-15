@@ -15,6 +15,15 @@ Fișier de reluare: ce merge, ce a fost verificat și cum, ce nu merge. Cel mai 
 - **Zona cu șoc — „treceri”:** numărul de treceri al zonei = trecerile muchiei pe care stă (din agregarea RVI), minim numărul de detectări. Nu publicăm trasee, deci nu putem număra trecerile prin rază din snapshot.
 - **Ghidul Primăriei:** nu contrazice specificația. Notat: „treat gaps as unknown”, „Romanian first”, WCAG 2.1 AA, „private by default”, Sesizări ca unic canal pentru probleme (nu trimitem sesizări, doar link), `/api/zones` e BROWSER OK (opțional, neimplementat încă).
 
+## Aplicația pentru bicicliști redusă la esențial (15.11.2026, ShockGrid_task.md)
+Checkpoint: tag `checkpoint-before-citizen-ux`.
+- **ShockGrid (bicicliști)** = un singur ecran: harta reală pe tot ecranul, „Unde mergi?” (căutarea se deschide mereu), locația, Straturi, Informații, „Raportează”. Fără bară de meniu: au dispărut „Mai mult”, „Ture”, „Traseu” ca tab, înregistrarea, importul, întrebările de după tură, contribuția cu măsurători, setările tehnice. Componente noi în `src/ui/citizen/` (CitizenMap, PlaceReport, InfoSheet).
+- **Raportare**: trei categorii mari cu pictograme distincte (Groapă și Denivelare / Prag desenate în `HazardIcons.tsx`, Obstacol = bariera Lucide); cu GPS bun se salvează la a doua atingere, „Salvat pe acest telefon” + Anulează; altfel corectarea locului pe hartă (fără precizie GPS inventată).
+- **Harta**: legenda Neted / Denivelat / Foarte denivelat; implicit doar tronsoanele măsurate sigur; datele incerte și explorarea lentă sunt sub „Straturi”. „Nu avem încă date de confort în această zonă.” apare o singură dată, doar pe hartă, doar când zona vizibilă nu are date.
+- **Traseu**: buton „Înapoi la hartă”, panou compact (timp, distanță, confort cunoscut/necunoscut, Pornește); în navigare: distanța rămasă, timpul, Raportează, Oprește.
+- **ShockGrid Dev** păstrează tot: navigarea cu măsurare (injectată prin `src/dev/NavTech.tsx`, ca aplicația pentru bicicliști să nu conțină înregistratorul), înregistrarea live, întrebările de după tură, rapoartele cu editare, plus meniul nou Panou · Import & Ture · Analiză · Hartă tehnică · Zone și șocuri · Strat public · Instrumente. Panoul arată lanțul SMARTPHONE → SENZORI → RVI → POTRIVIRE GPS → SEGMENTE → VERIFICARE → STRAT PUBLIC cu cifrele turelor încărcate. Copierea din aplicația pentru bicicliști include acum și rapoartele (doar citire).
+- Bundle-ul pentru bicicliști: 398 KB (de la 498 KB), fără înregistrator, grafice, pagini de analiză (verificat de `check-bundles.mjs` și `test/two-sites.test.ts`).
+
 ## Două site-uri: ShockGrid și ShockGrid Dev (15.11.2026)
 Checkpoint: tag `checkpoint-before-two-sites`.
 - **https://eric22220.github.io/ShockGrid/** (repo ShockGrid, `deploy.yml`): aplicația pentru bicicliști, intrarea `src/main.tsx` → `src/ui/App.tsx`. Hartă, traseu, raportare, ture proprii (pagină simplă), întrebările de după tură, Mai mult = rapoarte, măsurători (consimțământ), cum funcționează, date și surse, confidențialitate, actualizări. Fără import, diagnostic, parametri, grafice, evenimente brute, publicare.

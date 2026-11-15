@@ -27,13 +27,18 @@ function reachable(entry: string): Set<string> {
   return seen;
 }
 const rel = (s: Set<string>) => [...s].map((f) => f.replace(/\\/g, '/').replace(/^.*\/src\//, 'src/'));
-const DEV_ONLY = ['src/dev/', 'src/ui/pages/AdvancedPage', 'src/ui/pages/DiagnosticPage', 'src/ui/pages/SettingsPage', 'src/ui/pages/SimulationPage', 'src/ui/pages/ImportPage', 'src/ui/pages/RideDetail', 'src/ui/pages/ReviewScreen', 'src/ui/pages/EventsPage', 'src/ui/pages/StreetPage', 'src/ui/pages/ReplayPage', 'src/ui/pages/ComparePage', 'src/ui/pages/MethodologyPage', 'src/ui/charts/', 'src/core/publiclayer'];
+const DEV_ONLY = ['src/dev/', 'src/capture/', 'src/services/ride', 'src/ui/charts/', 'src/core/publiclayer', 'src/storage/migrate'];
+/** singurele ecrane din src/ui/pages folosite de aplicația pentru bicicliști */
+const CITIZEN_PAGES = ['src/ui/pages/RouteScreen.tsx'];
 
 describe('două aplicații, un singur cod sursă', () => {
   it('aplicația pentru bicicliști nu importă (nici indirect) componente tehnice', () => {
     const cit = rel(reachable('src/main.tsx'));
-    const leaked = cit.filter((f) => DEV_ONLY.some((d) => f.startsWith(d)));
+    const leaked = cit.filter((f) => DEV_ONLY.some((d) => f.startsWith(d)) || (f.startsWith('src/ui/pages/') && !CITIZEN_PAGES.includes(f)));
     expect(leaked).toEqual([]);
+    // fără „Mai mult”, ture, import, setări tehnice în sursele aplicației pentru bicicliști
+    const text = cit.filter((f) => f.startsWith('src/ui/') || f === 'src/main.tsx').map((f) => readFileSync(f, 'utf8').replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '')).join(' '); // fără comentarii: doar textul afișat și codul
+    for (const w of ['Mai mult', 'Turele mele', 'Contribuie cu măsurători', 'Sensor Logger', 'RVI', 'requestMotionPermission', 'ShockGrid Lab', 'Instrumente avansate']) expect(text, w).not.toContain(w);
     expect(cit).toContain('src/core/route.ts'); // rutarea reală e prezentă
     expect(cit).toContain('src/ui/components/QuickReport.tsx');
   });

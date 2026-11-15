@@ -37,3 +37,23 @@
   .dev-stats { grid-template-columns: 1fr 1fr; }
 }
 .uplot, .u-legend { color: var(--fg); font-family: var(--font); font-size: 12px; }
+.chain { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; counter-reset: none; }
+.chain li + li { margin-top: 0; }
+.chain li { position: relative; }
+.chain li:not(:last-child)::after { content: '→'; position: absolute; right: -8px; top: 50%; transform: translate(50%, -50%); color: var(--muted); font-weight: 700; z-index: 1; }
+.chain a { display: flex; flex-direction: column; gap: 2px; height: 100%; padding: 12px 10px; border-radius: 14px; background: var(--surface); border: 1px solid var(--border); text-decoration: none; color: inherit; box-shadow: var(--shadow-1); }
+.chain a:hover { border-color: var(--primary); }
+.chain-n { font-size: 11px; font-weight: 800; color: var(--primary); }
+.chain-t { font-size: 12.5px; font-weight: 750; text-transform: uppercase; letter-spacing: .03em; color: var(--fg-2); display: flex; gap: 4px; align-items: center; }
+.chain-t svg { width: 14px; height: 14px; }
+.chain b { font-size: 22px; line-height: 1.2; margin-top: 4px; }
+.chain-s { font-size: 11.5px; color: var(--muted); line-height: 1.3; }
+.chain li:last-child a { border-color: var(--comfort); }
+.funnel { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+.funnel > div { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 12px; display: flex; flex-direction: column; }
+.funnel > div + div { margin-top: 0; }
+.funnel b { font-size: 24px; }
+.funnel span { font-size: 12.5px; color: var(--muted); }
+.funnel .hl { border-color: var(--warn); }
+@media (max-width: 1200px) { .chain { grid-template-columns: repeat(4, 1fr); } .chain li:nth-child(4n)::after { display: none; } }
+@media (max-width: 640px) { .chain { grid-template-columns: 1fr 1fr; } .chain li::after { display: none; } .funnel { grid-template-columns: repeat(3, 1fr); } }

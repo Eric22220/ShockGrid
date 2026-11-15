@@ -10,7 +10,7 @@ export function ExportsPage() {
   const layer = useApp((s) => s.layer);
   return (
     <main className="screen"><div className="wrap stack">
-      <Header title="Exporturi GeoJSON / JSON" back="#/" />
+      <Header title="Exporturi GeoJSON / JSON" back="#/more/advanced" />
       <p className="small muted">Stratul curent din acest browser: date publicate de echipă + turele locale activate în hartă. Segmente agregate și zone cu șocuri, licență ODbL.</p>
       <Banner kind="warn">Dacă stratul include ture locale, exportul conține măsurători derivate din trasee private. Pentru publicare folosește „Strat public” (cu tăierile de confidențialitate și audit), nu aceste exporturi brute.</Banner>
       <div className="grid2">

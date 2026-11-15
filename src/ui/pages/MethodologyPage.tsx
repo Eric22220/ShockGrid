@@ -8,7 +8,7 @@ export function MethodologyPage() {
   const layer = useApp((s) => s.layer);
   return (
     <main className="screen"><div className="wrap stack">
-      <Header title="Cum măsurăm confortul" back="#/more" />
+      <Header title="Cum măsurăm confortul" back="#/more/advanced" />
       <p>Telefonul fixat pe ghidon simte fiecare zdruncinătură. ShockGrid transformă aceste vibrații într-un indice de confort pentru fiecare bucată de stradă pe care ai mers.</p>
       <div className="card stack">
         {CLASSES.map((c) => <div key={c} className="row nowrap"><ClassBadge c={c} /><div><b>{t.classShort[c]}</b><div className="small muted">{t.classPlain[c]}</div></div></div>)}

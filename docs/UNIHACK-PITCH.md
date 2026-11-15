@@ -53,12 +53,13 @@ Nu afirmăm reducerea accidentelor și nici măsurarea traficului.
 
 Ambele vin din același cod (repo-ul ShockGrid); Dev e publicat din repo-ul ShockGridDev. Bazele de date din browser sunt separate (`shockgrid` și `shockgrid-dev`). Pe laptopul de demo: deschide Dev → Panou → „Ture din aplicația ShockGrid” → Copiază, sau Import ZIP.
 
-## Demo pentru cetățeni (fără explicații tehnice)
-1. Deschide ShockGrid: harta reală a Timișoarei.
-2. **Unde mergi?** → alege destinația → ruta, cu „măsurat” și „necunoscut” separate.
-3. Opțional: activează **Contribuie cu măsurători în timpul navigării** → **Pornește** (pe iPhone apare cererea de acces la mișcare).
-4. **Raportează → Groapă**: „Raport salvat pe acest telefon”, cu Anulează.
-5. **Oprește** → „Ai întâlnit o problemă pe drum?” → Da / Nu / Mai târziu.
+## Demo pentru cetățeni (sub 30 s, fără explicații tehnice)
+„Uitați aplicația pentru bicicliști.”
+1. Deschide ShockGrid: harta reală a Timișoarei, pe tot ecranul.
+2. **Unde mergi?** → alege destinația → ruta, cu timp, distanță și „Confort necunoscut” sau culorile unde există date.
+3. **Pornește** → distanța rămasă; **Oprește**.
+4. **Raportează → Groapă**: „Salvat pe acest telefon”, cu Anulează.
+5. Măsurarea în timpul navigării și întrebările de după tură se arată în ShockGrid Dev (Instrumente → Navigare cu măsurare).
 6. Al doilea site, **https://eric22220.github.io/ShockGridDev/**: „așa funcționează în spate” (import, accelerație și giroscop, RVI, zone, audit, strat public; scenariile de mai jos).
 
 ## Scenariul A: datele reale trec de filtre

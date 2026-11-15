@@ -33,6 +33,8 @@ export interface Settings {
   mapStyle: 'auto' | 'light' | 'dark';
   /** „Contribuie cu măsurători în timpul navigării”: pornit explicit de utilizator */
   contribute: boolean;
+  /** aplicația pentru bicicliști: arată și datele incerte / parcurse încet (controlul straturilor; implicit nu) */
+  showUncertain: boolean;
 }
 
 export interface ImportReport {
@@ -86,6 +88,7 @@ const defaultSettings: Settings = {
   showZones: true,
   mapStyle: 'auto',
   contribute: false,
+  showUncertain: false,
 };
 
 let state: AppState = {

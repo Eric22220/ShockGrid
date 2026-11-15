@@ -5,7 +5,7 @@ import { join } from 'node:path';
 
 const text = (dir) => readdirSync(join(dir, 'assets')).filter((f) => f.endsWith('.js') || f.endsWith('.css')).map((f) => readFileSync(join(dir, 'assets', f), 'utf8')).join('\n');
 // texte care există DOAR în paginile tehnice (src/dev și paginile de analiză folosite numai de Dev)
-const DEV_ONLY = ['Generează și auditează', 'Lanțul de procesare', 'Parametri algoritm', 'Date tehnice (Dev)', 'SIMULARE rutare', 'Importă din Sensor Logger', 'Exporturi GeoJSON', 'Diagnostic senzori', 'u-over', 'uplot', 'Analiză tehnică'];
+const DEV_ONLY = ['Generează și auditează', 'Lanțul de procesare', 'Parametri algoritm', 'Date tehnice (Dev)', 'SIMULARE rutare', 'Importă din Sensor Logger', 'Exporturi GeoJSON', 'Diagnostic senzori', 'u-over', 'uplot', 'Analiză tehnică', 'Mai mult', 'Turele mele', 'Contribuie cu măsurători', 'Măsoară vibrațiile', 'Pornește o tură', 'devicemotion', 'wakeLock', 'ShockGrid Lab', 'Zone de verificat'];
 let fail = 0;
 const ok = (c, m) => { console.log(`${c ? 'OK  ' : 'FAIL'} ${m}`); if (!c) fail++; };
 
@@ -16,7 +16,7 @@ ok(JSON.parse(readFileSync('dist/manifest.webmanifest', 'utf8')).scope === '/Sho
 
 if (existsSync('dist-dev')) {
   const dev = text('dist-dev');
-  for (const m of ['Generează și auditează', 'Parametri algoritm', 'Date tehnice (Dev)']) ok(dev.includes(m), `dist-dev/ conține „${m}”`);
+  for (const m of ['Generează și auditează', 'Parametri algoritm', 'Date tehnice (Dev)', 'Măsoară vibrațiile', 'devicemotion', 'Zone de verificat', 'Importă din Sensor Logger']) ok(dev.includes(m), `dist-dev/ conține „${m}”`);
   const html = readFileSync('dist-dev/index.html', 'utf8');
   ok(html.includes('/ShockGridDev/assets/') && !html.includes('"/ShockGrid/assets/'), 'dist-dev/ servit sub /ShockGridDev/');
   ok(html.includes('ShockGrid Dev'), 'titlul ShockGrid Dev');

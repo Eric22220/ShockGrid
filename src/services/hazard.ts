@@ -4,14 +4,11 @@ import type { RideRoughness, RoughZone } from '../core/roughness';
 import type { LocalReport, ReportType } from '../storage/idb';
 import { createReport, shockKey, type ShockReview } from './reports';
 
-/** categoriile rapide, în ordinea în care le vede ciclistul */
+/** doar trei categorii, mari și clare (raportare în 2 atingeri); celelalte tipuri rămân pentru rapoartele vechi */
 export const QUICK_TYPES: { id: ReportType; label: string }[] = [
   { id: 'groapa', label: 'Groapă' },
-  { id: 'denivelare', label: 'Denivelare' },
+  { id: 'denivelare', label: 'Denivelare / Prag' },
   { id: 'obstacol', label: 'Obstacol' },
-  { id: 'capac', label: 'Capac de canal' },
-  { id: 'rost', label: 'Șine / rost' },
-  { id: 'alta', label: 'Altă problemă' },
 ];
 
 /** o poziție mai veche de atât nu mai e „aici” (la 20 km/h, 15 s ≈ 80 m) */

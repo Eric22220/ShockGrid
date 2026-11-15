@@ -6,7 +6,7 @@ export function PrivacyPage() {
   const [done, setDone] = useState(false);
   return (
     <main className="screen"><div className="wrap stack">
-      <Header title="Confidențialitate" back="#/more" />
+      <Header title="Confidențialitate" back="#/more/advanced" />
       <div className="card small stack">
         <p><b>Ce stocăm:</b> turele tale (accelerație, giroscop, poziții GPS, ore), rapoartele tale (poziție, tip, descriere, fotografie opțională), destinațiile recente și setările.</p>
         <p><b>Unde:</b> doar pe acest telefon, în browser (IndexedDB). Nimic nu se încarcă automat pe vreun server.</p>

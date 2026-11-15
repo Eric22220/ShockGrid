@@ -7,6 +7,7 @@ import { UPlot } from '../ui/charts/UPlot';
 import { fmt, fmtLen } from '../ui/format';
 import { ClassBadge } from '../ui/kit';
 import type { MapTech } from '../ui/pages/MapScreen';
+import { DEV_REPORT_HOOKS } from './NavTech';
 
 function EdgeTech({ e, len, osm, version, zones, manual }: Parameters<MapTech['edge']>[0]) {
   const layer = useApp((s) => s.layer);
@@ -62,4 +63,5 @@ function ZoneTech({ z }: { z: ShockZone }) {
 export const MAP_TECH: MapTech = {
   edge: (p) => <EdgeTech {...p} />,
   zone: (z) => <ZoneTech z={z} />,
+  reportHooks: DEV_REPORT_HOOKS,
 };

@@ -329,3 +329,34 @@ th, td { text-align: left; padding: 8px; border-bottom: 1px solid var(--border);
 .ask-card { border: 1.5px solid var(--warn); }
 .sheet.quick { position: fixed; z-index: 1700; padding-bottom: var(--safe-b); }
 .quick-backdrop { position: fixed; inset: 0; z-index: 1690; background: rgba(0,0,0,.18); }
+
+/* ---------- trei categorii de raport, mari ---------- */
+.hazard3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.hazard3 button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-height: 112px; padding: 12px 6px; border-radius: 18px; border: 1.5px solid var(--border); background: var(--surface); color: var(--fg); cursor: pointer; font: inherit; }
+.hazard3 button:active { transform: scale(.97); }
+.hazard3 button[aria-pressed=true] { border-color: var(--danger); background: var(--danger-soft); }
+.hazard3 button:disabled:not([aria-pressed=true]) { opacity: .45; }
+.hazard3 .hz-ic { width: 58px; height: 58px; border-radius: 50%; display: grid; place-items: center; background: var(--danger-soft); color: var(--danger); }
+.hazard3 .hz-l { font-size: 15px; font-weight: 700; line-height: 1.2; text-align: center; }
+
+/* ---------- aplicația pentru bicicliști: un singur ecran, fără bară de meniu ---------- */
+.app.citizen .screen-map { inset: 0; }
+.app.citizen .fab { bottom: calc(20px + var(--safe-b)); right: 16px; }
+.app.citizen .toast { bottom: calc(96px + var(--safe-b)); }
+.app.citizen .live-panel { padding-bottom: calc(16px + var(--safe-b)); }
+.app.citizen .sheet:not(.snap) .sheet-body { padding-bottom: calc(18px + var(--safe-b)); }
+.app.citizen .sheet.snap .sheet-peek { padding-bottom: var(--safe-b); }
+.app.citizen .sheet.snap .sheet-body { padding-bottom: calc(20px + var(--safe-b)); }
+.chip-x { border: 0; background: transparent; color: inherit; width: 32px; height: 32px; margin: -6px -8px -6px 2px; display: inline-grid; place-items: center; cursor: pointer; flex: none; }
+.chip-x svg { width: 16px; height: 16px; }
+.hz-badge { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; background: var(--danger-soft); color: var(--danger); flex: none; }
+.hazard3.compact button { min-height: 84px; gap: 6px; }
+.hazard3.compact .hz-ic { width: 42px; height: 42px; }
+.hazard3.compact .hz-l { font-size: 13.5px; }
+.place-hint { flex: 1; background: var(--surface); border-radius: 16px; box-shadow: var(--shadow-2); padding: 10px 14px; display: flex; flex-direction: column; gap: 2px; }
+.place-hint span { font-size: 13.5px; color: var(--muted); line-height: 1.35; }
+.planner .back { flex: none; width: 40px; height: 40px; }
+.info details { border-bottom: 1px solid var(--border); padding: 4px 0 10px; }
+.info details > summary { cursor: pointer; font-weight: 700; font-size: 16px; min-height: 44px; display: flex; align-items: center; }
+.info details p { margin: 6px 0; }
+.info details + details { margin-top: 0; }
