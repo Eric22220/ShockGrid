@@ -5,7 +5,7 @@ import { join } from 'node:path';
 
 const text = (dir) => readdirSync(join(dir, 'assets')).filter((f) => f.endsWith('.js') || f.endsWith('.css')).map((f) => readFileSync(join(dir, 'assets', f), 'utf8')).join('\n');
 // texte care există DOAR în paginile tehnice (src/dev și paginile de analiză folosite numai de Dev)
-const DEV_ONLY = ['Generează și auditează', 'Lanțul de procesare', 'Parametri algoritm', 'Date tehnice (Dev)', 'SIMULARE rutare', 'Importă din Sensor Logger', 'Exporturi GeoJSON', 'Diagnostic senzori', 'u-over', 'uplot', 'Analiză tehnică', 'Mai mult', 'Turele mele', 'Contribuie cu măsurători', 'Măsoară vibrațiile', 'Pornește o tură', 'devicemotion', 'wakeLock', 'ShockGrid Lab', 'Zone de verificat', 'Publică pe ShockGrid', 'api.github.com', 'git/blobs'];
+const DEV_ONLY = ['Generează și auditează', 'Lanțul de procesare', 'Parametri algoritm', 'Date tehnice (Dev)', 'SIMULARE rutare', 'Importă din Sensor Logger', 'Exporturi GeoJSON', 'Diagnostic senzori', 'u-over', 'uplot', 'Analiză tehnică', 'Mai mult', 'Turele mele', 'Contribuie cu măsurători', 'Măsoară vibrațiile', 'Pornește o tură', 'devicemotion', 'wakeLock', 'ShockGrid Lab', 'Zone de verificat', 'Publică pe ShockGrid', 'api.github.com', 'git/blobs', 'Reset demonstrație', 'Golește harta publică', 'Probleme detectate automat'];
 let fail = 0;
 const ok = (c, m) => { console.log(`${c ? 'OK  ' : 'FAIL'} ${m}`); if (!c) fail++; };
 
@@ -13,10 +13,11 @@ const cit = text('dist');
 for (const m of DEV_ONLY) ok(!cit.includes(m), `dist/ (bicicliști) nu conține „${m}”`);
 ok(readFileSync('dist/index.html', 'utf8').includes('/ShockGrid/assets/'), 'dist/ servit sub /ShockGrid/');
 ok(JSON.parse(readFileSync('dist/manifest.webmanifest', 'utf8')).scope === '/ShockGrid/', 'manifestul bicicliștilor are scope /ShockGrid/');
+for (const m of ['Ocolește problemele', 'Parcurs, neevaluat', 'Actualizează traseul', 'Posibilă problemă']) ok(cit.includes(m), `dist/ (bicicliști) conține „${m}”`);
 
 if (existsSync('dist-dev')) {
   const dev = text('dist-dev');
-  for (const m of ['Generează și auditează', 'Parametri algoritm', 'Date tehnice (Dev)', 'Măsoară vibrațiile', 'devicemotion', 'Zone de verificat', 'Importă din Sensor Logger', 'Publică pe ShockGrid', 'api.github.com']) ok(dev.includes(m), `dist-dev/ conține „${m}”`);
+  for (const m of ['Generează și auditează', 'Parametri algoritm', 'Date tehnice (Dev)', 'Măsoară vibrațiile', 'devicemotion', 'Zone de verificat', 'Importă din Sensor Logger', 'Publică pe ShockGrid', 'api.github.com', 'Reset demonstrație', 'Golește harta publică', 'Probleme detectate automat']) ok(dev.includes(m), `dist-dev/ conține „${m}”`);
   ok(dev.includes('Testează conexiunea GitHub') && !dev.includes("Nu am putut contacta GitHub (fără internet?)"), 'Dev are testul de conexiune GitHub și diagnosticul nou (fără vechiul „fără internet?”)');
   // cererile către api.github.com au doar antete permise de CORS (fără opțiunea cache: WebKit ar adăuga Cache-Control/Pragma)
   ok(!/api\.github\.com[^"`]{0,400}cache:"no-(store|cache)"/.test(dev) && !/cache:"no-(store|cache)"[^"`]{0,120}api\.github\.com/.test(dev), 'cererile către api.github.com nu folosesc opțiunea cache');

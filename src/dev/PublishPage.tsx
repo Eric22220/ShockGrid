@@ -8,15 +8,18 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { aggregate, snapshotRideCount, type Snapshot } from '../core/aggregate';
 import { checkLive, deployStatus, GhError, LIVE_BASE, publishToGitHub, STAGE_LABEL, TARGET, testConnection, type ConnResult, type GhStage, type PublishStep } from '../core/github';
 import { diffSnapshots, parseSnapshot, publishBlockers, validatePublicDataset, type SnapshotDiff } from '../core/publication';
-import { auditLayer, buildPublicLayer, type AuditResult, type PublicLayerFiles } from '../core/publiclayer';
+import { auditLayer, buildPublicLayer, coverageReport, type AuditResult, type CoverageReport, type PublicLayerFiles } from '../core/publiclayer';
+import { fromPublic } from '../core/hazards';
 import { PRIVACY_RADIUS_M } from '../core/publish';
 import { useApp } from '../state/store';
 import { download, fmtLen } from '../ui/format';
 import { Banner, toast } from '../ui/kit';
-import { drawComfort } from '../ui/map/draw';
+import { drawComfort, drawHazards } from '../ui/map/draw';
 import { L, useLayerGroup, useLeaflet } from '../ui/map/useLeaflet';
+import { CoveragePanel, useCoverage } from './Hazards';
+import { DemoReset } from './DemoReset';
 
-type Out = { layer: PublicLayerFiles; audit: AuditResult; invalid: string[]; diff: SnapshotDiff | null };
+type Out = { layer: PublicLayerFiles; audit: AuditResult; invalid: string[]; diff: SnapshotDiff | null; cov: CoverageReport };
 type Phase =
   | { k: 'idle' }
   | { k: 'running'; step: PublishStep | 'deploy' | 'verify'; detail?: string }
@@ -29,9 +32,12 @@ export function PublishPage() {
   const graph = useApp((s) => s.graph);
   const rides = useApp((s) => s.rides);
   const localLayer = useApp((s) => s.layer);
+  const reviews = useApp((s) => s.reviews);
   const included = useMemo(() => rides.filter((r) => r.included), [rides]);
-  const [exploratory, setExploratory] = useState(false);
-  const [shocks, setShocks] = useState<'none' | 'clean'>('clean');
+  // implicit: tot traseul parcurs eligibil (neutru, „Parcurs, neevaluat”) și toate problemele detectate automat
+  const [exploratory, setExploratory] = useState(true);
+  const [hazMode, setHazMode] = useState<'all' | 'confirmed'>('all');
+  const cov = useCoverage();
   const [out, setOut] = useState<Out | null>(null);
   const [busy, setBusy] = useState(false);
   const [live, setLive] = useState<{ snap: Snapshot | null; ok: boolean } | null>(null);
@@ -68,17 +74,19 @@ export function PublishPage() {
     setBusy(true); reset();
     setTimeout(() => {
       try {
-        const layer = buildPublicLayer(included.map((r) => r.processed), graph, { exploratory, shocks });
+        const ps = included.map((r) => r.processed);
+        const layer = buildPublicLayer(ps, graph, { exploratory, shocks: 'none', hazards: hazMode, decisionOf: (k) => reviews[k] });
         const audit = auditLayer(layer.snap, Object.values(layer.files).join(''), included.map((r) => ({ p: r.processed, file: r.file_name, name: r.file_name.replace(/\.zip$/i, '') })), graph);
         const invalid = validatePublicDataset(layer.snap);
-        setOut({ layer, audit, invalid, diff: live?.ok ? diffSnapshots(live.snap, layer.snap) : null });
+        setOut({ layer, audit, invalid, diff: live?.ok ? diffSnapshots(live.snap, layer.snap) : null, cov: coverageReport(ps, graph, layer.snap) });
       } catch (e) { toast((e as Error).message); } finally { setBusy(false); }
     }, 30);
   };
   useEffect(() => { if (out && live?.ok && !out.diff) setOut({ ...out, diff: diffSnapshots(live.snap, out.layer.snap) }); }, [live]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const c = out?.layer.manifest.counts;
-  const lowCount = c ? c.low_confidence + c.explored : 0;
+  // date cu încredere redusă: segmente incerte, traseu parcurs neevaluat și probleme detectate automat (neconfirmate)
+  const lowCount = c ? c.low_confidence + c.explored + c.hazards_unverified : 0;
   const pass = !!out && out.audit.ok && out.invalid.length === 0;
   const blockers = out ? publishBlockers({ auditOk: out.audit.ok, invalid: out.invalid, liveKnown: !!live?.ok, approved: approve, lowCount, lowApproved: approveLow, token }) : ['generează propunerea'];
   const canPublish = blockers.length === 0 && phase.k !== 'running';
@@ -91,7 +99,7 @@ export function PublishPage() {
       setPhase({ k: 'running', step: 'connect' });
       const res = await publishToGitHub({
         token: tok, files: out.layer.files, publicationId: id, expectedPrevious: live?.snap?.meta.publication_id ?? null,
-        message: `Strat public ${id} (publicat din ShockGrid Dev)\n\n${c!.segments} segmente, ${c!.meters} m, ${c!.hazards_unverified} șocuri neverificate. Date agregate auditate; fără trasee, ore sau identificatori.`,
+        message: `Strat public ${id} (publicat din ShockGrid Dev)\n\n${c!.segments} segmente, ${c!.meters} m; probleme: ${c!.hazards_verified} confirmate, ${c!.hazards_unverified} detectate automat (neconfirmate). Date agregate auditate; fără trasee, ore sau identificatori.`,
         onStep: (s) => alive.current && setPhase({ k: 'running', step: s }),
       });
       // verificarea pe site-ul live: deploy-ul GitHub Pages durează câteva minute
@@ -133,12 +141,14 @@ export function PublishPage() {
           <div className="card"><div className="small muted">Ture selectate</div><div className="big num">{included.length}</div><div className="xs muted">din {rides.length} în acest browser</div></div>
           <div className="card"><div className="small muted">Segmente eligibile</div><div className="big num">{c ? c.segments : '—'}</div><div className="xs muted">{c ? fmtLen(c.meters) : 'după generare'}</div></div>
           <div className="card"><div className="small muted">Încredere</div><div className="big num">{c ? `${c.measured} / ${c.low_confidence}` : '—'}</div><div className="xs muted">{c ? `măsurate sigur / incerte${c.explored ? ` · ${c.explored} explorate lent` : ''}` : 'măsurat / incert'}</div></div>
-          <div className="card"><div className="small muted">Șocuri</div><div className="big num">{c ? `${c.hazards_verified} / ${c.hazards_unverified}` : '—'}</div><div className="xs muted">confirmate / neverificate</div></div>
+          <div className="card"><div className="small muted">Probleme</div><div className="big num">{c ? `${c.hazards_verified} / ${c.hazards_unverified}` : '—'}</div><div className="xs muted">{c ? `confirmate / detectate automat${c.hazards_likely ? ` (${c.hazards_likely} probabile)` : ''}` : 'confirmate / automate'}</div></div>
         </div>
+        {cov && <CoveragePanel c={cov} pub={out?.cov ?? null} />}
         <div className="row">
-          <label className="switch"><input type="checkbox" checked={exploratory} onChange={(e) => { setExploratory(e.target.checked); reset(); }} /><span className="small">Include explorarea lentă (fără culoare de confort)</span></label>
-          <label className="switch"><input type="checkbox" checked={shocks === 'clean'} onChange={(e) => { setShocks(e.target.checked ? 'clean' : 'none'); reset(); }} /><span className="small">Include zonele cu șocuri (neverificate, context bun)</span></label>
+          <label className="switch"><input type="checkbox" checked={exploratory} onChange={(e) => { setExploratory(e.target.checked); reset(); }} /><span className="small">Include traseul parcurs neevaluat („Parcurs, neevaluat”, fără culoare)</span></label>
+          <label className="switch"><input type="checkbox" checked={hazMode === 'all'} onChange={(e) => { setHazMode(e.target.checked ? 'all' : 'confirmed'); reset(); }} /><span className="small">Include problemele detectate automat (neconfirmate); altfel doar cele confirmate</span></label>
         </div>
+        <p className="xs muted" style={{ margin: 0 }}>Verificarea manuală e opțională (Zone și șocuri): „Nu este o problemă” scoate zona din această publicare; „Confirmă” o marchează confirmată.</p>
       </section>
 
       <section className="card stack pub-step">
@@ -165,13 +175,15 @@ export function PublishPage() {
             <span><i style={{ background: '#1b7a3a' }} />propus (culoare = confort; întrerupt = incert)</span>
             <span><i style={{ background: '#5a6677' }} />publicat acum</span>
             <span><i style={{ background: '#c2261b', height: 2 }} />exclus (confidențialitate sau date insuficiente)</span>
+            <span><i style={{ background: '#e8590c', height: 6 }} />problemă (plin = confirmată/probabilă, întrerupt = posibilă)</span>
           </div>
+          {out.layer.hazards.some((h) => h.detail?.excluded && h.level !== 'rejected' && h.level !== 'weak') && <p className="xs muted" style={{ margin: 0 }}>Probleme detectate dar nepublicate (confidențialitate): {out.layer.hazards.filter((h) => h.detail?.excluded && h.level !== 'rejected' && h.level !== 'weak').length}. Rămân vizibile doar în Dev.</p>}
           {out.diff ? (
             <p className="small" style={{ margin: 0 }}><b>{out.diff.added.length}</b> segmente noi · <b>{out.diff.updated.length}</b> actualizate · <b>{out.diff.unchanged.length}</b> neschimbate · <b>{out.diff.removed.length}</b> dispar din stratul public{live?.snap && snapshotRideCount(live.snap) ? ` (stratul publicat acum: ${live.snap.edges.length} segmente)` : ' (acum nu e nimic publicat)'}.</p>
           ) : <Banner kind="warn">Nu am putut citi stratul publicat de pe {LIVE_BASE}. <button className="btn sm" onClick={() => void loadLive()}>Reîncearcă</button></Banner>}
           {out.diff && out.diff.removed.length > 0 && <Banner kind="warn">Publicarea înlocuiește stratul actual: {out.diff.removed.length} segmente publicate anterior nu apar în propunere (turele lor nu sunt în acest browser).</Banner>}
           {c && c.meters < 1000 && <Banner kind="info">Propunerea adaugă foarte puțin: {fmtLen(c.meters)} de stradă. Harta bicicliștilor va rămâne aproape fără culori.</Banner>}
-          {c && c.measured === 0 && c.segments > 0 && <Banner kind="warn">Niciun segment nu e „măsurat sigur” (o singură trecere, viteză mică sau GPS slab). În ShockGrid apar doar la Straturi → „Date incerte”, iar rutele nu le folosesc ca dovadă de confort.</Banner>}
+          {c && c.measured === 0 && c.segments > 0 && <Banner kind="warn">Niciun segment nu e „măsurat sigur” (o singură trecere, viteză mică sau GPS slab). În ShockGrid apar ca „Parcurs, neevaluat” (neutru), iar rutele nu le folosesc ca dovadă de confort.</Banner>}
         </section>
       )}
 
@@ -182,7 +194,7 @@ export function PublishPage() {
           <ul className="small pub-files">{Object.entries(out.layer.files).map(([n, t]) => <li key={n}><code>{TARGET.dir}/{n}</code> <span className="muted">{(t.length / 1024).toFixed(1)} KB</span></li>)}</ul>
           <div className="row">{Object.entries(out.layer.files).map(([n, t]) => <button key={n} className="btn sm ghost" onClick={() => download(n, t, 'application/json')}><Download /> {n}</button>)}</div>
           <label className="switch pub-confirm"><input type="checkbox" checked={approve} onChange={(e) => setApprove(e.target.checked)} /><span>Confirm că am dreptul să public aceste măsurători și aprob setul de date anonimizat.</span></label>
-          {lowCount > 0 && <label className="switch pub-confirm"><input type="checkbox" checked={approveLow} onChange={(e) => setApproveLow(e.target.checked)} /><span>Știu că {lowCount} {lowCount === 1 ? 'segment are' : 'segmente au'} încredere redusă: apar doar ca „date incerte” și nu sunt validate.</span></label>}
+          {lowCount > 0 && <label className="switch pub-confirm"><input type="checkbox" checked={approveLow} onChange={(e) => setApproveLow(e.target.checked)} /><span>Știu că {c!.low_confidence + c!.explored} {c!.low_confidence + c!.explored === 1 ? 'segment are' : 'segmente au'} încredere redusă (apar neutru, „Parcurs, neevaluat”){c!.hazards_unverified ? ` și ${c!.hazards_unverified} ${c!.hazards_unverified === 1 ? 'problemă e detectată' : 'probleme sunt detectate'} automat, neconfirmate (apar ca „posibile”)` : ''}; nimic nu e validat pe teren.</span></label>}
         </section>
       )}
 
@@ -229,9 +241,11 @@ export function PublishPage() {
           </dl>
           {phase.unchanged && <p className="small" style={{ margin: 0 }}>Aceeași versiune era deja publicată: nu am creat alt commit.</p>}
           <a className="btn primary lg block" href={citizenUrl} target="_blank" rel="noopener"><ExternalLink /> Deschide ShockGrid</a>
-          <p className="xs muted" style={{ margin: 0 }}>Pe alt telefon: deschide {LIVE_BASE.replace('https://', '')}{lowCount ? ' și pornește Straturi → „Date incerte”' : ''}.</p>
+          <p className="xs muted" style={{ margin: 0 }}>Pe alt telefon: deschide {LIVE_BASE.replace('https://', '')}: traseul parcurs apare neutru, problemele apar pe străzi. Fără import de fișiere.</p>
         </section>
       )}
+
+      <DemoReset token={token} setToken={setToken} live={live?.snap ?? null} liveOk={!!live?.ok} reload={loadLive} busy={phase.k === 'running'} />
     </div></main>
   );
 }
@@ -281,6 +295,7 @@ function PreviewMap({ snap, published, localEdges }: { snap: Snapshot; published
     drawComfort(g, graph, proposed, null, { uncertain: true });
     for (const e of snap.edges) pts.push(...graph.geometry(e.edge_id));
     for (const s of snap.shocks) L.circleMarker([s.lat, s.lon], { radius: 7, color: '#fff', weight: 2, fillColor: '#e8590c', fillOpacity: 0.5, dashArray: '3 3', interactive: false }).bindTooltip('șoc neverificat').addTo(g);
+    drawHazards(g, graph, fromPublic(snap.hazards), null);
     if (pts.length) map!.fitBounds(L.latLngBounds(pts), { padding: [30, 30], maxZoom: 17, animate: false });
   }, [snap, published, proposed]);
   return <div ref={ref} className="map inline tall" role="img" aria-label="Previzualizarea stratului propus pe hartă" />;

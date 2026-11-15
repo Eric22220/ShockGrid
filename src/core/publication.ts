@@ -1,6 +1,7 @@
 // Setul de date public (stratul agregat): identificator de versiune, validare înainte de publicare, citire
 // tolerantă în aplicația pentru bicicliști, diferența față de stratul deja publicat. Fără rețea aici.
 import type { Snapshot, SnapshotEdge, SnapshotShock } from './aggregate';
+import type { PublicHazard } from './hazards';
 import { hashString } from './stats';
 
 /** fișierele publicate împreună, într-un singur commit (aplicația pentru bicicliști citește doar primul) */
@@ -10,13 +11,18 @@ export const PRIMARY_FILE = 'comfort-layer.json';
 /** ID-ul publicării = amprenta conținutului, fără momentul generării: același conținut → același ID (idempotent) */
 export function publicationId(snap: Snapshot): string {
   const { generated_at: _g, publication_id: _p, ...meta } = snap.meta;
-  const body = JSON.stringify({ meta, edges: snap.edges, shocks: snap.shocks });
+  // `hazards` intră în amprentă doar dacă există (ID-urile straturilor vechi rămân aceleași)
+  const body = JSON.stringify({ meta, edges: snap.edges, shocks: snap.shocks, ...(snap.hazards ? { hazards: snap.hazards } : {}) });
   return `pub-${hashString(body)}${hashString(body, 7).slice(0, 4)}`;
 }
 
 const EDGE_KEYS = new Set<keyof SnapshotEdge>(['edge_id', 'rms', 'speed', 'acc', 'n_total', 'n_amb', 'n_passes', 'n_rides', 'last_seen', 'sources', 'slow_rms', 'slow_speed', 'slow_passes', 'off', 'pk', 'slow_off']);
 const SHOCK_KEYS = new Set<keyof SnapshotShock>(['lat', 'lon', 'r', 'peak', 'z', 'double_hit', 'speed', 'edge', 'needs_review', 'pass_key', 'snippet', 'date']);
-const META_KEYS = new Set(['processing_version', 'generated_at', 'thresholds', 'thresholds_source', 'device_note', 'ride_ids', 'ride_keys', 'n_rides', 'includes_exploratory', 'attribution', 'license', 'publication_id']);
+const META_KEYS = new Set(['processing_version', 'generated_at', 'thresholds', 'thresholds_source', 'device_note', 'ride_ids', 'ride_keys', 'n_rides', 'includes_exploratory', 'attribution', 'license', 'publication_id', 'reset']);
+const HAZARD_KEYS = new Set<keyof PublicHazard>(['lat', 'lon', 'r', 'level', 'type', 'edges', 'date']);
+const LEVELS = new Set(['possible', 'likely', 'confirmed']);
+const TYPES = new Set(['groapa', 'denivelare', 'obstacol']);
+const TOP_KEYS = new Set(['meta', 'edges', 'shocks', 'hazards']);
 const num = (x: unknown) => typeof x === 'number' && Number.isFinite(x);
 const nums = (a: unknown) => Array.isArray(a) && a.every(num);
 
@@ -24,10 +30,23 @@ const nums = (a: unknown) => Array.isArray(a) && a.every(num);
 export function validatePublicDataset(snap: Snapshot): string[] {
   const err: string[] = [];
   if (!snap || typeof snap !== 'object' || !snap.meta || !Array.isArray(snap.edges) || !Array.isArray(snap.shocks)) return ['structură invalidă (lipsesc meta / edges / shocks)'];
+  for (const k of Object.keys(snap)) if (!TOP_KEYS.has(k)) err.push(`câmp nepermis: ${k}`);
   for (const k of Object.keys(snap.meta)) if (!META_KEYS.has(k)) err.push(`câmp nepermis în meta: ${k}`);
   if (snap.meta.ride_ids?.length) err.push('meta conține ID-uri de tură (sunt permise doar chei de deduplicare)');
   if (!snap.meta.publication_id || snap.meta.publication_id !== publicationId(snap)) err.push('ID-ul publicării lipsește sau nu corespunde conținutului');
-  if (!snap.edges.length && !snap.shocks.length) err.push('setul de date e gol: nimic de publicat');
+  const empty = !snap.edges.length && !snap.shocks.length && !(snap.hazards?.length);
+  // un set gol se publică DOAR ca golire intenționată a hărții (meta.reset), niciodată din greșeală
+  if (empty && snap.meta.reset !== true) err.push('setul de date e gol: nimic de publicat');
+  if (!empty && snap.meta.reset) err.push('un set de golire (reset) nu poate conține date');
+  if (snap.hazards !== undefined && !Array.isArray(snap.hazards)) err.push('hazards trebuie să fie o listă');
+  for (const h of snap.hazards ?? []) {
+    for (const k of Object.keys(h)) if (!HAZARD_KEYS.has(k as keyof PublicHazard)) err.push(`câmp nepermis într-o problemă: ${k}`);
+    if (!num(h.lat) || !num(h.lon) || !num(h.r)) err.push('problemă fără poziție validă');
+    if (!LEVELS.has(h.level)) err.push(`problemă cu nivel nevalid: ${String(h.level)}`);
+    if (h.type !== undefined && (!TYPES.has(h.type) || h.level !== 'confirmed')) err.push('tipul problemei e permis doar pentru cele confirmate (groapa/denivelare/obstacol)');
+    if (!Array.isArray(h.edges) || !h.edges.every((e) => Number.isInteger(e) && e >= 0)) err.push('problemă cu muchii nevalide');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(h.date)) err.push('problemă cu dată invalidă (doar AAAA-LL-ZZ)');
+  }
   const seen = new Set<number>();
   for (const e of snap.edges) {
     for (const k of Object.keys(e)) if (!EDGE_KEYS.has(k as keyof SnapshotEdge)) err.push(`câmp nepermis în segmentul ${e.edge_id}: ${k}`);
@@ -55,7 +74,8 @@ export function parseSnapshot(json: unknown): Snapshot | null {
   if (!s.meta || typeof s.meta !== 'object' || typeof s.meta.generated_at !== 'string' || !Array.isArray(s.edges) || !Array.isArray(s.shocks)) return null;
   const edges = s.edges.filter((e) => e && Number.isInteger(e.edge_id) && nums(e.rms) && nums(e.speed) && nums(e.acc) && e.rms.length === e.speed.length);
   const shocks = s.shocks.filter((x) => x && num(x.lat) && num(x.lon));
-  return { ...s, edges, shocks };
+  const hazards = Array.isArray(s.hazards) ? s.hazards.filter((h) => h && num(h.lat) && num(h.lon) && num(h.r) && LEVELS.has(h.level) && Array.isArray(h.edges) && h.edges.every((e) => Number.isInteger(e))) : undefined;
+  return { ...s, edges, shocks, ...(hazards ? { hazards } : {}) };
 }
 
 /** versiunea unui strat (ID-ul publicării sau, la straturile vechi, momentul generării) */
@@ -83,7 +103,7 @@ export interface PublicationManifest {
   generated_at: string;
   processing_version: string;
   files: string[];
-  counts: { segments: number; measured: number; low_confidence: number; explored: number; hazards_unverified: number; hazards_verified: number; meters: number };
+  counts: { segments: number; measured: number; low_confidence: number; explored: number; hazards_unverified: number; hazards_verified: number; meters: number; hazards_possible?: number; hazards_likely?: number; reset?: boolean };
   note: string;
 }
 

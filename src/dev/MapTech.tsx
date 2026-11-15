@@ -8,6 +8,7 @@ import { fmt, fmtLen } from '../ui/format';
 import { ClassBadge } from '../ui/kit';
 import type { MapTech } from '../ui/pages/MapScreen';
 import { DEV_REPORT_HOOKS } from './NavTech';
+import { HazardCard } from './Hazards';
 
 function EdgeTech({ e, len, osm, version, zones, manual }: Parameters<MapTech['edge']>[0]) {
   const layer = useApp((s) => s.layer);
@@ -63,5 +64,6 @@ function ZoneTech({ z }: { z: ShockZone }) {
 export const MAP_TECH: MapTech = {
   edge: (p) => <EdgeTech {...p} />,
   zone: (z) => <ZoneTech z={z} />,
+  hazard: (h) => (h.detail ? <HazardCard h={h} open /> : <p className="small">Problemă din stratul publicat ({h.level}{h.type ? `, ${h.type}` : ''}). Decizia se ia pe tura locală.</p>),
   reportHooks: DEV_REPORT_HOOKS,
 };

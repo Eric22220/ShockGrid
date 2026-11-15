@@ -1,16 +1,24 @@
 // Alternativele de rută pentru ecranul Traseu și verdictul onest despre confort.
 import type { ComfortClass, ComfortLayer } from './aggregate';
 import type { Graph } from './graph';
+import { hazardsOnRoute, type Hazard, type HazardMode } from './hazards';
 import { PROFILES, Router, penaltyOf, routeStats, type ProfileKey, type RouteOptions, type RouteResult, type RouteStats } from './route';
 
+/** variantele afișate: profilurile de confort și alternativa care ocolește problemele detectate */
+export type OptionKey = ProfileKey | 'avoid';
+
 export interface RouteOptionView {
-  key: ProfileKey;
+  key: OptionKey;
   r: RouteResult;
   s: RouteStats;
   /** procentul de metri A+B din metrii cunoscuți (null dacă nu există metri cunoscuți) */
   knownGoodPct: number | null;
   knownByClass: Record<ComfortClass, number>;
   problems: { zones: number; reports: number };
+  /** problemele de pe drum (toate cele active) pe care le atinge ruta */
+  hazards: Hazard[];
+  /** doar la „avoid”: problemele de pe ruta cea mai scurtă evitate de această variantă */
+  avoided?: Hazard[];
 }
 
 /** Verdictul despre confort. Reguli (fără excepții):
@@ -22,7 +30,7 @@ export type Verdict =
   | { kind: 'insufficient'; text: string } // câteva măsurători, prea puține pentru o comparație
   | { kind: 'partial'; text: string } // cea mai scurtă e necunoscută, o alternativă e măsurată: informăm, nu recomandăm
   | { kind: 'same'; text: string } // cea mai scurtă e măsurată suficient și nu am găsit o alternativă măsurată mai bună
-  | { kind: 'better'; text: string; best: ProfileKey }; // ambele măsurate suficient, alternativa are mai puține vibrații măsurate
+  | { kind: 'better'; text: string; best: OptionKey }; // ambele măsurate suficient, alternativa are mai puține vibrații măsurate
 
 /** procentul minim din lungimea rutei care trebuie măsurat ca să vorbim despre confortul ei */
 export const MIN_COVERAGE_PCT = 50;
@@ -76,7 +84,13 @@ function isBetter(a: RouteOptionView, s: RouteOptionView): boolean {
   return de >= MIN_DE_GAIN_M || good >= MIN_GOOD_GAIN_PCT;
 }
 
-export interface PlanResult { options: RouteOptionView[]; verdict: Verdict; error?: string }
+export interface PlanResult { options: RouteOptionView[]; verdict: Verdict; error?: string; /** textul despre problemele detectate (gol = fără probleme pe rute) */ hazardText?: string }
+
+/** Limitele alternativei „Ocolește problemele”: fără ocoluri absurde (configurabile, documentate). */
+export const AVOID_MAX_EXTRA_RATIO = 0.5; // cel mult +50% din lungime…
+export const AVOID_MAX_EXTRA_M = 1000; // …și cel mult +1 km
+/** geometrie cu adevărat diferită: cel puțin atâția metri (și 10% din rută) care nu sunt pe ruta cea mai scurtă */
+export const AVOID_MIN_DIFF_M = 30;
 
 export interface PointLike { lat: number; lon: number }
 
@@ -90,7 +104,8 @@ export function problemsNear(g: Graph, r: RouteResult, pts: PointLike[], radius 
   return pts.filter((p) => g.query(p.lat, p.lon, radius).some((c) => set.has(c.edge))).length;
 }
 
-export function planRoutes(g: Graph, layer: ComfortLayer | null, router: Router, src: number, dst: number, base: RouteOptions, extra: { zones: PointLike[]; reports: PointLike[] } = { zones: [], reports: [] }): PlanResult {
+export function planRoutes(g: Graph, layer: ComfortLayer | null, router: Router, src: number, dst: number, base: RouteOptions, extra: { zones: PointLike[]; reports: PointLike[] } = { zones: [], reports: [] }, hazardMode: HazardMode = 'confident'): PlanResult {
+  const hs = layer?.hazards ?? [];
   const keys: ProfileKey[] = ['shortest', 'balanced', 'courier'];
   const raw = keys.map((key) => ({ key, r: router.route(src, dst, layer, { ...base, w_c: PROFILES[key] }) }));
   if (!raw[0].r.found) return { options: [], verdict: { kind: 'nodata', text: '' }, error: 'Nu am găsit o rută pe bicicletă între aceste puncte (sens unic, trotuare sau zonă neconectată).' };
@@ -99,11 +114,13 @@ export function planRoutes(g: Graph, layer: ComfortLayer | null, router: Router,
     const known: Record<ComfortClass, number> = { A: 0, B: 0, C: 0, D: 0, E: 0 };
     for (const c of ['A', 'B', 'C', 'D', 'E'] as ComfortClass[]) known[c] = s.byClass.measured[c] + s.byClass.low[c];
     const kn = Object.values(known).reduce((a, b) => a + b, 0);
+    const onRoute = hazardsOnRoute(hs, r.edges.map((e) => e.edge), 'all');
     return {
       key, r, s, knownByClass: known,
       knownGoodPct: kn > 0 ? (100 * (known.A + known.B)) / kn : null,
-      problems: { zones: problemsNear(g, r, extra.zones), reports: problemsNear(g, r, extra.reports) },
-    };
+      problems: { zones: problemsNear(g, r, extra.zones) + onRoute.length, reports: problemsNear(g, r, extra.reports) },
+      hazards: onRoute,
+    } as RouteOptionView;
   });
   const shortest = opts[0];
   // alternative distincte (fără dubluri)
@@ -140,5 +157,44 @@ export function planRoutes(g: Graph, layer: ComfortLayer | null, router: Router,
       verdict = { kind: 'same', text: `Nu am găsit o alternativă măsurată cu mai puține vibrații. Ruta e măsurată ${fmtPct(shortest.s.measured_pct)}${shortest.knownGoodPct !== null ? `, ${Math.round(shortest.knownGoodPct)}% confortabil (A–B)` : ''}.${mostlyLowConfidence(shortest) ? LOW_NOTE : ''}` };
     }
   }
-  return { options: visible, verdict };
+  // ---- alternativa care ocolește problemele detectate (independentă de verdictul de confort) ----
+  const avoid = avoidOption(g, layer, router, src, dst, base, shortest, hazardMode, extra);
+  let hazardText: string | undefined;
+  if (avoid.option && !visible.some((v) => sameEdges(v.r, avoid.option!.r))) visible = [...visible, avoid.option];
+  else if (avoid.option) { const v = visible.find((x) => sameEdges(x.r, avoid.option!.r))!; v.avoided = avoid.option.avoided; }
+  if (avoid.text) hazardText = avoid.text;
+  return { options: visible, verdict, hazardText };
+}
+
+/** Ruta cea mai scurtă care ocolește problemele (doar penalizarea problemelor, fără confort) — afișată doar dacă
+ * evită efectiv cel puțin o problemă de pe ruta cea mai scurtă, are altă geometrie și ocolul e rezonabil. */
+function avoidOption(g: Graph, layer: ComfortLayer | null, router: Router, src: number, dst: number, base: RouteOptions, shortest: RouteOptionView, mode: HazardMode, extra: { zones: PointLike[]; reports: PointLike[] }): { option: RouteOptionView | null; text?: string } {
+  const hs = layer?.hazards ?? [];
+  const onShort = hazardsOnRoute(hs, shortest.r.edges.map((e) => e.edge), mode);
+  const anyOnShort = shortest.hazards.length;
+  const uncertainOnly = mode === 'confident' && anyOnShort > 0 && onShort.length === 0;
+  if (!onShort.length) return { option: null, text: uncertainOnly ? `Ruta trece prin ${anyOnShort} ${anyOnShort === 1 ? 'loc cu posibile probleme' : 'locuri cu posibile probleme'} (detectate automat, neconfirmate).` : undefined };
+  const r = router.route(src, dst, layer, { ...base, w_c: 0, hazard_mode: mode });
+  const no = (why: string) => ({ option: null, text: `Ruta trece prin ${onShort.length} ${onShort.length === 1 ? 'zonă cu probleme detectate' : 'zone cu probleme detectate'}; ${why}` });
+  if (!r.found || sameEdges(r, shortest.r)) return no('nu există o variantă legală pe bicicletă care să le ocolească cu un ocol rezonabil.');
+  const onAlt = hazardsOnRoute(hs, r.edges.map((e) => e.edge), mode);
+  const avoided = onShort.filter((h) => !onAlt.includes(h));
+  const inShort = new Set(shortest.r.edges.map((e) => e.edge));
+  const diff = r.edges.reduce((a, e) => a + (inShort.has(e.edge) ? 0 : g.length[e.edge]), 0);
+  const extraM = r.length - shortest.r.length;
+  if (!avoided.length || onAlt.length >= onShort.length) return no('nicio variantă rezonabilă nu le evită.');
+  if (extraM > AVOID_MAX_EXTRA_M || r.length > shortest.r.length * (1 + AVOID_MAX_EXTRA_RATIO)) return no(`ocolul ar fi prea mare (+${Math.round(extraM)} m).`);
+  if (diff < Math.max(AVOID_MIN_DIFF_M, 0.1 * r.length)) return no('variantele diferă prea puțin ca să conteze.');
+  const s = routeStats(g, layer, r, base);
+  const known: Record<ComfortClass, number> = { A: 0, B: 0, C: 0, D: 0, E: 0 };
+  for (const c of ['A', 'B', 'C', 'D', 'E'] as ComfortClass[]) known[c] = s.byClass.measured[c] + s.byClass.low[c];
+  const kn = Object.values(known).reduce((a, b) => a + b, 0);
+  const all = hazardsOnRoute(hs, r.edges.map((e) => e.edge), 'all');
+  return {
+    option: {
+      key: 'avoid', r, s, knownByClass: known, knownGoodPct: kn > 0 ? (100 * (known.A + known.B)) / kn : null,
+      problems: { zones: problemsNear(g, r, extra.zones) + all.length, reports: problemsNear(g, r, extra.reports) },
+      hazards: all, avoided,
+    },
+  };
 }

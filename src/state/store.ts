@@ -6,6 +6,8 @@ import {
 } from '../core/aggregate';
 import { DEFAULT_CONFIG, type VibrationConfig } from '../core/config';
 import { Graph, type GraphJson } from '../core/graph';
+import { assessHazards, type HazardMode } from '../core/hazards';
+import { haversine } from '../core/geo';
 import { ImportError } from '../core/io';
 import { assignOffsets } from '../core/mapmatch';
 import { matchProcessed } from '../core/process';
@@ -38,6 +40,8 @@ export interface Settings {
   contribute: boolean;
   /** aplicația pentru bicicliști: arată și datele incerte / parcurse încet (controlul straturilor; implicit nu) */
   showUncertain: boolean;
+  /** experimental: alternativa „Ocolește problemele” ține cont și de problemele posibile (neconfirmate) */
+  avoidUncertain: boolean;
 }
 
 export interface ImportReport {
@@ -96,7 +100,11 @@ const defaultSettings: Settings = {
   mapStyle: 'auto',
   contribute: false,
   showUncertain: false,
+  avoidUncertain: false,
 };
+
+/** ce probleme folosește alternativa „Ocolește problemele” */
+export const hazardModeOf = (s: Settings): HazardMode => (s.avoidUncertain ? 'all' : 'confident');
 
 let state: AppState = {
   reports: [],
@@ -137,7 +145,7 @@ export function getRouter() {
 
 function buildLayer(rides: idb.StoredRide[], version: number, s: AppState = state): ComfortLayer {
   const g = s.graph;
-  return aggregate({
+  const layer = aggregate({
     snapshot: s.snapshot,
     rides: rides.map((r) => toContribution(r.processed, r.included)),
     cfg: s.settings.cfg,
@@ -148,6 +156,18 @@ function buildLayer(rides: idb.StoredRide[], version: number, s: AppState = stat
     version,
     lengthOf: g ? (e) => g.length[e] : undefined,
   });
+  // problemele din turele locale (Dev), evaluate automat; deciziile manuale le confirmă sau le resping. Și turele deja
+  // publicate se evaluează local (verificarea rămâne posibilă); o problemă publicată din același loc e înlocuită de cea
+  // locală, ca să nu apară de două ori pe hartă sau în rutare.
+  // Doar în Dev: aplicația pentru bicicliști arată exclusiv problemele PUBLICATE (turele vechi rămase în baza ei locală,
+  // din perioada dinaintea separării, nu creează probleme pe harta sau în rutele bicicliștilor).
+  const local = IS_DEV_APP ? rides.filter((r) => r.included).map((r) => r.processed) : [];
+  if (local.length) {
+    const mine = assessHazards(local, { cfg: s.settings.cfg, graph: g, decisionOf: (k) => s.reviews[k] });
+    const dup = (h: { lat: number; lon: number; r: number }) => mine.some((m) => haversine(m.lat, m.lon, h.lat, h.lon) <= Math.max(m.r, h.r, s.settings.cfg.zone_link_min_m));
+    layer.hazards = [...layer.hazards.filter((h) => !dup(h)), ...mine];
+  }
+  return layer;
 }
 
 function recompute(rides = state.rides) {
@@ -482,6 +502,38 @@ export async function reviewZone(rideId: string, zone: { lat: number; lon: numbe
   set({ rejected: [...rej] });
   await idb.kvSet('rejected', [...rej]).catch(() => {});
   recompute();
+}
+
+/** Decizia manuală pentru o problemă detectată automat (Dev): se aplică tuturor detectărilor ei.
+ * Confirmă → „confirmată” (cu tipul ales); Nu este o problemă → respinsă (nu se publică, nu schimbă rutarea);
+ * Nu sunt sigur → rămâne la nivelul automat. Nu creează rapoarte personale. */
+export async function reviewHazard(members: string[], answer: ReviewAnswer, type?: idb.ReportType) {
+  const at = Date.now();
+  const reviews = { ...state.reviews };
+  for (const k of members) reviews[k] = { ...(reviews[k] ?? {}), answer, type: answer === 'yes' ? type : undefined, at };
+  const rej = new Set(state.rejected);
+  for (const k of members) { if (answer === 'no') rej.add(k); else rej.delete(k); }
+  set({ reviews, rejected: [...rej] });
+  await idb.kvSet('shock-reviews', reviews).catch(() => {});
+  await idb.kvSet('rejected', [...rej]).catch(() => {});
+  recompute();
+}
+
+/** Reset demonstrație, LOCAL: șterge din baza acestui site (ShockGrid Dev: „shockgrid-dev”) turele importate, analizele,
+ * deciziile de verificare, rapoartele locale și starea demo-ului. NU atinge harta publică, aplicația pentru bicicliști
+ * (baza „shockgrid”), alte telefoane sau fișierele ZIP originale. Setările rămân. */
+export async function resetLocalDemo(): Promise<{ rides: number; reviews: number; reports: number }> {
+  const counts = { rides: state.rides.length, reviews: Object.keys(state.reviews).length, reports: state.reports.length };
+  // ștergere țintită (nu clearAll): setările, istoricul rutelor, destinațiile recente și o eventuală înregistrare în curs rămân
+  for (const r of state.rides) await idb.deleteRide(r.ride_id);
+  for (const r of await idb.listRides()) await idb.deleteRide(r.ride_id);
+  for (const r of await idb.listReports()) await idb.deleteReport(r.id);
+  const blank: Record<string, unknown> = { 'shock-reviews': {}, rejected: [], ab: { a: null, b: null }, plan: { origin: null, dest: null } };
+  for (const [k, v] of Object.entries(blank)) await idb.kvSet(k, v).catch(() => {});
+  await idb.kvDelete('zones-cache').catch(() => {});
+  set({ rides: [], rejected: [], lastImport: null, ab: { a: null, b: null }, reports: [], reviews: {}, plan: { origin: null, dest: null } });
+  recompute([]);
+  return counts;
 }
 
 // ---------------- planificarea rutei ----------------

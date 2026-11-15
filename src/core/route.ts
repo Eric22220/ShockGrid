@@ -1,12 +1,16 @@
-// Rutarea A→B (8.4): A* cu euristica Haversine și heap binar. Șocurile NU intră în cost.
+// Rutarea A→B (8.4): A* cu euristica Haversine și heap binar. Problemele de pe drum (hazards.ts) intră în cost DOAR
+// când opțiunea hazard_mode o cere (alternativa „Ocolește problemele”); ruta cea mai scurtă nu le folosește.
 import type { ComfortClass, ComfortLayer, EdgeStatus } from './aggregate';
 import type { Graph } from './graph';
 import { haversine } from './geo';
+import { hazardEdgePenalty, type HazardMode } from './hazards';
 
 export interface RouteOptions {
   w_c: number;
   p_unknown: number;
   useOsmSurface: boolean;
+  /** ce probleme de pe drum penalizează ruta (implicit niciuna) */
+  hazard_mode?: HazardMode;
 }
 
 export const PROFILES = { shortest: 0, balanced: 1, courier: 3 } as const;
@@ -111,14 +115,21 @@ export class Router {
   constructor(readonly g: Graph) {}
 
   costs(layer: ComfortLayer | null, o: RouteOptions): Float64Array {
-    const key = `${layer?.version ?? -1}|${o.w_c}|${o.p_unknown}|${o.useOsmSurface}`;
+    const mode = o.hazard_mode ?? 'none';
+    const key = `${layer?.version ?? -1}|${o.w_c}|${o.p_unknown}|${o.useOsmSurface}|${mode}`;
     let c = this.cache.get(key);
     if (c) return c;
     if (this.cache.size > 12) this.cache.clear();
     c = new Float64Array(this.g.nEdges);
+    const hz = hazardEdgePenalty(layer?.hazards ?? [], mode);
     for (let e = 0; e < this.g.nEdges; e++) {
-      if (!routable(this.g, e)) { c[e] = Infinity; continue; }
-      c[e] = this.g.length[e] * (1 + o.w_c * penaltyOf(this.g, layer, e, o).p);
+      if (!routable(this.g, e)) { c[e] = Infinity; continue; } // legalitatea nu se negociază pentru confort
+      const L = this.g.length[e];
+      const pe = penaltyOf(this.g, layer, e, o);
+      c[e] = L * (1 + o.w_c * pe.p);
+      const h = hz.get(e);
+      // problema și clasa măsurată a aceleiași muchii descriu aceeași vibrație: se ia maximul, nu suma
+      if (h) c[e] += Math.max(0, h - (pe.cat === 'measured' || pe.cat === 'low' ? L * o.w_c * pe.p : 0));
     }
     this.cache.set(key, c);
     return c;

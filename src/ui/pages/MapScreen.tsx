@@ -8,14 +8,15 @@ import type { LocalReport } from '../../storage/idb';
 import { rejectZone, updateSettings, useApp } from '../../state/store';
 import { CLASS_COLORS, fmt, fmtLen } from '../format';
 import { Banner, ClassBadge, Sheet } from '../kit';
-import { drawComfort, drawReports, drawTrack, drawZones, EXPLORE_COLOR, GREY_COLOR, ROUGH_STYLE } from '../map/draw';
+import { drawComfort, drawHazards, drawReports, drawTrack, drawZones, EXPLORE_COLOR, GREY_COLOR, HAZARD_STYLE, ROUGH_STYLE } from '../map/draw';
+import { HAZARD_LABEL, type Hazard } from '../../core/hazards';
 import { distToEdges } from '../../core/corridor';
 import { useLocation, useMeLayer } from '../map/me';
 import { useLayerGroup, useLeaflet } from '../map/useLeaflet';
 import { go } from '../nav';
 import { ReportButton, type ReportHooks } from '../components/QuickReport';
 
-type Sel = { edge?: EdgeAgg; zone?: ShockZone; report?: LocalReport; layers?: true } | null;
+type Sel = { edge?: EdgeAgg; zone?: ShockZone; hazard?: Hazard; report?: LocalReport; layers?: true } | null;
 
 // dacă utilizatorul a pornit „Locația mea”, rămâne pornită când revine pe hartă (în aceeași sesiune)
 let rememberLoc = false;
@@ -24,6 +25,8 @@ let rememberLoc = false;
 export interface MapTech {
   edge: (p: { e: EdgeAgg; len: number; osm: string; version: string; zones: ShockZone[]; manual: number }) => ReactNode;
   zone: (z: ShockZone) => ReactNode;
+  /** fișa unei probleme detectate automat (nivel, dovezi, decizia manuală opțională) */
+  hazard?: (h: Hazard) => ReactNode;
   reportHooks?: ReportHooks;
 }
 
@@ -40,13 +43,19 @@ export function MapScreen({ focus, tech }: { focus?: string; tech?: MapTech }) {
   const [locOn, setLocOnState] = useState(rememberLoc);
   const setLocOn = (v: boolean) => { rememberLoc = v; setLocOnState(v); };
   const [follow, setFollow] = useState(false);
-  const [showTracks, setShowTracks] = useState(!!focus);
+  // traseul GPS complet (toate vitezele) e vizibil implicit în Dev: harta de confort arată doar ce se poate evalua
+  const [showTracks, setShowTracks] = useState(!!focus || !!tech);
   const loc = useLocation(locOn);
   const { ref, map } = useLeaflet({ onClick: () => setSel(null), onDrag: () => setFollow(false) });
   useMeLayer(map, loc, follow);
 
   useLayerGroup(map, (g) => { if (graph) drawComfort(g, graph, layer, (e) => setSel({ edge: e })); }, [graph, layer]);
-  useLayerGroup(map, (g) => { if (settings.showZones) drawZones(g, layer.zones, settings.showReview, (z) => setSel({ zone: z })); }, [layer, settings.showZones, settings.showReview]);
+  // problemele evaluate automat (formatul nou); zonele vechi doar pentru straturile publicate înainte de ele
+  useLayerGroup(map, (g) => {
+    if (!settings.showZones) return;
+    if (graph) drawHazards(g, graph, layer.hazards, (h) => setSel({ hazard: h }), { dev: !!tech });
+    if (!layer.hazards.length) drawZones(g, layer.zones, settings.showReview, (z) => setSel({ zone: z }));
+  }, [graph, layer, settings.showZones, settings.showReview]);
   useLayerGroup(map, (g) => { drawReports(g, reports, (r) => setSel({ report: r })); }, [reports]);
   useLayerGroup(map, (g) => {
     const focused = focus ? rides.find((r) => r.ride_id === focus) : undefined;
@@ -104,9 +113,10 @@ export function MapScreen({ focus, tech }: { focus?: string; tech?: MapTech }) {
               ))}
               <div className="legend-row"><span className="legend-line" style={{ background: 'repeating-linear-gradient(90deg,#5a6677 0 7px,transparent 7px 12px)' }} /><span>Linie întreruptă: încredere redusă (o trecere, GPS slab sau ambiguu)</span></div>
               <div className="legend-row"><span className="legend-line" style={{ height: 3, background: `repeating-linear-gradient(90deg,${GREY_COLOR} 0 2px,transparent 2px 7px)` }} /><span>Gri punctat: date insuficiente pe acel tronson</span></div>
-              <div className="legend-row"><span className="legend-line" style={{ background: `repeating-linear-gradient(90deg,${EXPLORE_COLOR} 0 3px,transparent 3px 8px)` }} /><span>Violet punctat: parcurs doar lent (explorare, fără culoare de confort)</span></div>
+              <div className="legend-row"><span className="legend-line" style={{ background: `repeating-linear-gradient(90deg,${EXPLORE_COLOR} 0 5px,transparent 5px 11px)` }} /><span>Parcurs, neevaluat (încet sau prea puține ferestre; fără culoare de confort)</span></div>
               <div className="legend-row"><span className="legend-line" style={{ background: 'var(--surface-3)' }} /><span>Fără linie: încă nemăsurat (nu înseamnă neted)</span></div>
-              <div className="legend-row"><span className="legend-line" style={{ background: '#e8590c', height: 12, width: 12, borderRadius: 6, marginLeft: 9, marginRight: 9 }} /><span>Posibilă denivelare detectată</span></div>
+              {(['confirmed', 'likely', 'possible'] as const).map((k) => <div key={k} className="legend-row"><span className="legend-line" style={{ background: HAZARD_STYLE[k].dash ? `repeating-linear-gradient(90deg,${HAZARD_STYLE[k].color} 0 6px,transparent 6px 11px)` : HAZARD_STYLE[k].color, height: 8 }} /><span>{HAZARD_LABEL[k]}{k === 'possible' ? ' (detectată automat, neconfirmată)' : k === 'likely' ? ' (repetată, context bun)' : ''}</span></div>)}
+              <div className="legend-row"><span className="legend-line" style={{ background: '#5a6677', height: 3 }} /><span>Traseul GPS al turelor (toate vitezele, doar în Dev)</span></div>
               <div className="legend-row"><span className="legend-line" style={{ background: '#c2261b', height: 14, width: 14, borderRadius: 4, marginLeft: 8, marginRight: 8 }} /><span>Rapoartele tale (doar pe acest telefon)</span></div>
             </div>
             <div className="field"><span>Hartă de fundal</span>
@@ -127,6 +137,11 @@ export function MapScreen({ focus, tech }: { focus?: string; tech?: MapTech }) {
       )}
       {sel?.edge && graph && <EdgeSheet e={sel.edge} name={graph.name[sel.edge.edge_id] || 'Stradă fără nume'} len={graph.length[sel.edge.edge_id]} osm={`${graph.highway[sel.edge.edge_id]}${graph.surface[sel.edge.edge_id] ? ', suprafață ' + graph.surface[sel.edge.edge_id] : ''}`} version={layer.processing_version} onClose={() => setSel(null)} tech={tech} />}
       {sel?.zone && <ZoneSheet z={sel.zone} onClose={() => setSel(null)} tech={tech} />}
+      {sel?.hazard && (
+        <Sheet title={HAZARD_LABEL[sel.hazard.level]} onClose={() => setSel(null)}>
+          {tech?.hazard ? tech.hazard(layer.hazards.find((h) => h.id === sel.hazard!.id) ?? sel.hazard) : <p className="small">Detectată automat din vibrațiile înregistrate. Nu e o groapă verificată decât dacă e marcată „confirmată”.</p>}
+        </Sheet>
+      )}
       {sel?.report && <ReportSheet r={sel.report} onClose={() => setSel(null)} />}
     </main>
   );

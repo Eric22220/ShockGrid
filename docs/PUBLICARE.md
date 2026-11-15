@@ -39,3 +39,19 @@ Publicarea din browser eșua cu „Nu am putut contacta GitHub (fără internet?
 
 ## Verificare cap-coadă (făcută pe 15.11.2026)
 `GH_TOKEN=… npx tsx scripts/e2e-publish.ts`: un set **SINTETIC** marcat „TEST” (2 segmente pe Bulevardul Revoluției din 1989), publicat cu același cod. Commit `4042e54`; site-ul live a servit versiunea `pub-d72bcbabe6398088aa27` după ~47 s, iar harta aplicației a afișat cele 2 segmente. Setul a fost eliminat apoi prin revert (`7f01d8c`). Tura reală **nu** a fost publicată.
+
+## Ce conține acum setul publicat (din 15.11.2026)
+- Traseul parcurs eligibil: segmentele cu culoare de confort și cele „Parcurs, neevaluat” (neutru, fără culoare). Opțiunea e pornită implicit.
+- Problemele de pe drum: posibile și probabile (detectate automat) și confirmate (verificate în Dev), cu câmpurile minime. Vezi `docs/DETECTIE-AUTOMATA.md`. „Nu este o problemă” scoate zona din următoarea publicare.
+- Straturile publicate înainte (cu `shocks`) rămân citibile; aplicația le afișează ca înainte.
+
+## Reset demonstrație (Dev → Strat public, jos)
+1. **Date locale**: șterge din acest browser (ShockGrid Dev) turele importate, analizele, deciziile de verificare, rapoartele locale și traseul A–B al demo-ului.
+   - Nu publică nimic, deci nu poate goli harta publică.
+   - Rămân: harta publică, setările, istoricul rutelor, fișierele ZIP din telefon, aplicația ShockGrid de pe acest telefon și de pe orice alt telefon.
+   - Înainte: „Copie de siguranță” (deciziile + stratul publicat acum).
+2. **Harta publică**: confirmare separată și token. Publică prin același mecanism (commit atomic, verificare live) un set gol marcat `reset`.
+   - Un set gol fără `reset` e refuzat la validare, deci golirea nu se poate întâmpla din greșeală.
+   - Versiunea anterioară rămâne în git (`git revert <commit>`) și se poate descărca înainte.
+   - Pe fiecare telefon, aplicația afișează harta goală la următoarea deschidere cu internet; datele de hartă nu sunt în precache, iar service worker-ul cere întâi rețeaua.
+   - Rapoartele personale și istoricul rutelor de pe telefoane nu se șterg niciodată de la distanță.

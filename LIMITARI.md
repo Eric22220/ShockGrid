@@ -29,6 +29,14 @@ Trei lucruri separate: **rugozitatea continuă** (RMS pe ferestre de 2 s, singur
 - **Moduri de eșec cunoscute:** la viteză mică (sub ~9 km/h) un pas pe lângă bicicletă, o frână sau o mișcare a ghidonului pot depăși pragul; manevrarea fără rotație mare și fără schimbare de orientare nu e recunoscută; un telefon prins slab în suport amplifică șocurile; două obstacole la < 10–15 m apar ca o singură zonă; „treceri separate” într-o singură tură nu sunt independente ca în ture diferite (aceeași zi, același telefon). Pragurile nu au fost ajustate pe tura reală.
 - Zonele și șocurile **nu intră în costul rutei** (testat): costul folosește doar mediana RMS pe muchie; altfel aceeași denivelare ar fi penalizată de două ori.
 
+## Despre problemele detectate automat și rutarea care le ocolește
+- **„Posibilă problemă” nu e o groapă verificată.** Un șoc puternic poate fi o groapă, un capac, o bordură, o frânare sau o mișcare a telefonului (manevrarea evidentă e exclusă, dar nu orice mișcare). Doar „Confirmă problemă” din Dev o face confirmată.
+- **La viteză mică nimic nu devine „probabil”.** Pe tura de 41 min toate problemele sunt „posibile”; fără confirmări sau o tură la 10–25 km/h, rutarea implicită nu ocolește nimic (corect), iar ocolirea lor e doar în modul experimental.
+- **Penalizările rutării (300/200/80 m echivalenți) și limitele ocolului (+50%, +1 km) sunt alegeri de proiectare [EXPERIMENTAL]**, nu calibrate pe preferințele bicicliștilor.
+- **„Ocolește problemele” nu înseamnă „mai confortabil”.** Spune doar că evită zonele detectate; restul drumului poate fi neevaluat (și scrie asta).
+- **Poziția zonei e aproximativă** (± raza, din GPS); o problemă pe o intersecție poate fi atribuită uneia dintre străzi.
+- **Nicio validare pe teren** a nivelurilor automate (precizie/recall necunoscute).
+
 ## Despre stratul public
 - Nimic nu se publică automat. `npm run build-layer` scrie într-un folder privat (`eval/private/propunere`), `npm run audit-layer` verifică identificatorii, timpii și distanța față de capetele turelor; publicarea (copiere în `public/data/`) cere acordul celor care au înregistrat.
 - Stratul public nu conține ID-uri de tură (doar chei de deduplicare nereversibile), nume de telefon, nume de fișier sau timpi; nimic în primii/ultimii 200 m și nimic la < 250 m în linie dreaptă de capetele turei (nici geometria segmentelor). Asta nu garantează anonimatul: un lanț lung de segmente explorate arată o bucată de traseu, iar data turei rămâne (ziua). Auditul raportează lungimea lanțurilor.

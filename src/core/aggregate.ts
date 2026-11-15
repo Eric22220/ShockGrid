@@ -1,6 +1,7 @@
 // Agregarea pe muchii (8.3, 6.9), clasele (6.8), zonele cu șoc (6.10) și diferența înainte/după (8.6).
 import { DEFAULT_CONFIG, DEFAULT_THRESHOLDS, type VibrationConfig } from './config';
 import { haversine } from './geo';
+import { fromPublic, type Hazard, type PublicHazard } from './hazards';
 import { defaultRules, publicKey, publishFilter, rideEnds, type PublishRules } from './publish';
 import { EXPLORE_BANDS, isExploratory } from './quality';
 import { classifyEvent, clusterPoints } from './roughness';
@@ -67,9 +68,14 @@ export interface Snapshot {
     license: string;
     /** amprenta conținutului (publicarea din ShockGrid Dev); straturile vechi nu o au */
     publication_id?: string;
+    /** golirea intenționată a hărții publice (Reset demonstrație → harta publică) */
+    reset?: boolean;
   };
   edges: SnapshotEdge[];
+  /** format vechi: detectări individuale (straturile noi publică doar `hazards`) */
   shocks: SnapshotShock[];
+  /** problemele detectate automat / confirmate, agregate (fără detectări individuale); lipsește la straturile vechi */
+  hazards?: PublicHazard[];
 }
 
 export interface EdgeAgg {
@@ -194,6 +200,8 @@ export interface ComfortLayer {
   zones: ShockZone[];
   ride_ids: string[];
   n_valid_windows: number;
+  /** problemele de pe drum: publicate (aplicația pentru bicicliști) și, în Dev, cele din turele locale */
+  hazards: Hazard[];
 }
 
 /** câte ture conține stratul publicat (format vechi: ride_ids, nou: ride_keys) */
@@ -378,6 +386,7 @@ export function aggregate(inp: AggregateInput): ComfortLayer {
     zones,
     ride_ids: [...new Set([...(snap?.meta.ride_ids ?? []), ...rides.map((r) => r.ride_id)])].sort(),
     n_valid_windows: allRms.length,
+    hazards: fromPublic(snap?.hazards),
   };
 }
 
@@ -524,6 +533,8 @@ export interface SnapshotOptions {
   rules?: PublishRules;
   /** geometria muchiilor: elimină și muchiile care TREC prin raza de confidențialitate, nu doar ferestrele din ea */
   geometry?: (edge: number) => [number, number][];
+  /** problemele publicabile (deja filtrate pentru confidențialitate); dacă e dat, stratul are formatul nou */
+  hazards?: PublicHazard[];
 }
 
 /** Stratul public. Fără timpi individuali, fără ID-uri de tură sau de telefon, fără nume de fișiere, fără nimic în
@@ -618,5 +629,6 @@ export function buildSnapshot(rides: ProcessedRide[], cfg: VibrationConfig, devi
     },
     edges: [...edges.values()].filter((e) => e.n_total > 0 && (e.rms.length > 0 || (e.slow_rms?.length ?? 0) >= EXPLORE_MIN_WINDOWS)).sort((a, b) => a.edge_id - b.edge_id),
     shocks: shocks.sort((a, b) => a.lat - b.lat || a.lon - b.lon),
+    ...(opts.hazards ? { hazards: opts.hazards } : {}),
   };
 }

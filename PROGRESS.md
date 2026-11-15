@@ -15,6 +15,16 @@ Fișier de reluare: ce merge, ce a fost verificat și cum, ce nu merge. Cel mai 
 - **Zona cu șoc — „treceri”:** numărul de treceri al zonei = trecerile muchiei pe care stă (din agregarea RVI), minim numărul de detectări. Nu publicăm trasee, deci nu putem număra trecerile prin rază din snapshot.
 - **Ghidul Primăriei:** nu contrazice specificația. Notat: „treat gaps as unknown”, „Romanian first”, WCAG 2.1 AA, „private by default”, Sesizări ca unic canal pentru probleme (nu trimitem sesizări, doar link), `/api/zones` e BROWSER OK (opțional, neimplementat încă).
 
+## Acoperire GPS completă, detecție automată, rutare care ocolește problemele, reset demo (15.11.2026)
+Checkpoint: tag `checkpoint-before-coverage-hazard-routing`. Detalii: `docs/DETECTIE-AUTOMATA.md`.
+- **De ce doar 220 m:** tura de 41 min are viteza mediană ~1 m/s; 2 395 din 2 474 ferestre sunt sub 2,5 m/s, deci doar 70 intră în RVI; 168 din 184 de șocuri erau „de verificat” (viteză), deci nepublicate; explorarea lentă era oprită implicit.
+- **Acoperire:** traseul GPS complet vizibil în Dev (implicit); „Parcurs, neevaluat” (neutru, niciodată verde) publicat implicit; raportul GPS → pe străzi → clasificat → public → exclus (confidențialitate).
+- **Detecție automată** (`src/core/hazards.ts`) peste zonele existente (`rideRoughness`): slabă / posibilă / probabilă / confirmată / respinsă, fără verificare obligatorie; verificarea opțională în Dev (Zone și șocuri, Hartă tehnică): Confirmă (groapă / denivelare-prag / obstacol), Nu este o problemă, Nu sunt sigur.
+- **Rutare:** alternativa „Ocolește problemele” (penalizare o singură dată, max cu clasa măsurată, legalitate neschimbată, limite de ocol, geometrie diferită); implicit confirmate + probabile, posibilele doar în modul experimental; „Actualizează traseul” la date noi, fără schimbare tăcută.
+- **Publicare:** `hazards` agregate în `comfort-layer.json` (câmpuri minime, validate, audit de confidențialitate), compatibil cu straturile vechi; aplicația pentru bicicliști arată doar problemele publicate.
+- **Reset demonstrație** (Dev → Strat public): local (ture, decizii, rapoarte, starea demo-ului; nu atinge harta publică, istoricul rutelor, setările, alte telefoane) separat de golirea hărții publice (set gol marcat `reset`, același mecanism auditat, confirmare separată; un set gol fără `reset` e refuzat).
+- Teste: `test/coverage-hazards.test.ts` (16 cerințe pe date sintetice + 4 pe tura reală, locale).
+
 ## P0: publicarea din browser (iPhone) reparată (15.11.2026)
 Checkpoint: tag `checkpoint-before-mobile-publish-fix`.
 - **Cauza** (reprodusă în WebKit 18.2 și Chromium reale, contra api.github.com): `GitHubClient` apela `this.f(url)` cu `f = window.fetch`; fetch-ul nativ apelat ca metodă aruncă înainte de a trimite cererea („Can only call Window.fetch on instances of Window” / „Illegal invocation”), iar eroarea era afișată ca „fără internet”. Afecta orice browser; testul din terminal (Node) și testele cu fetch simulat nu o puteau prinde. CORS nu era cauza.

@@ -96,6 +96,7 @@ export async function kvGet<T>(k: string): Promise<T | undefined> {
   try { return (await (await db()).get('kv', k)) as T | undefined; } catch { return undefined; }
 }
 export async function kvSet(k: string, v: unknown) { await (await db()).put('kv', v, k); }
+export async function kvDelete(k: string) { await (await db()).delete('kv', k); }
 export async function clearAll() {
   const d = await db();
   await d.clear('rides');

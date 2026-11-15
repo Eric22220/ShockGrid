@@ -1,22 +1,22 @@
-import { ArrowDownUp, ArrowLeft, Check, History, LocateFixed, MapPin, Navigation, Search, Square, X } from 'lucide-react';
+import { ArrowDownUp, ArrowLeft, Check, History, LocateFixed, MapPin, Navigation, RefreshCw, Search, Square, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import type { ProfileKey, RouteOptions } from '../../core/route';
-import { fmtPct, planRoutes, routeEvidence, type PlanResult, type RouteOptionView } from '../../core/routeplan';
+import type { RouteOptions } from '../../core/route';
+import { fmtPct, planRoutes, routeEvidence, type OptionKey, type PlanResult, type RouteOptionView } from '../../core/routeplan';
 import { navProgress } from '../../core/navprogress';
 import { geocoder, GeocodeError, buildStreetIndex, nearestStreetName, searchStreets, type Place, type StreetEntry } from '../../services/geocode';
 import { locationPermission, type LocState } from '../../services/location';
 import { ReportButton, type ReportHooks } from '../components/QuickReport';
-import { addRecent, clearRecent, getRouter, historyFinish, historyStart, setPlan, snapNode, updateSettings, useApp } from '../../state/store';
+import { addRecent, clearRecent, getRouter, hazardModeOf, historyFinish, historyStart, setPlan, snapNode, updateSettings, useApp } from '../../state/store';
 import { t } from '../../i18n/ro';
 import { CLASS_COLORS, fmtLen } from '../format';
 import { Banner, SnapSheet, toast, useDebounced, type Snap } from '../kit';
-import { drawComfort, pinIcon, routeLatLngs } from '../map/draw';
+import { drawComfort, drawHazards, pinIcon, routeLatLngs } from '../map/draw';
 import { useLocation, useMeLayer } from '../map/me';
 import { L, useLayerGroup, useLeaflet } from '../map/useLeaflet';
 import { go } from '../nav';
 
 const fmtDur = (s: number) => { const t = Math.max(0, Math.floor(s)); const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), x = t % 60; return h ? `${h}:${String(m).padStart(2, '0')}:${String(x).padStart(2, '0')}` : `${m}:${String(x).padStart(2, '0')}`; };
-const PROFILE_LABEL: Record<ProfileKey, string> = { shortest: 'Cea mai scurtă', balanced: 'Alternativă', courier: 'Alternativă' };
+const PROFILE_LABEL: Record<OptionKey, string> = { shortest: 'Cea mai rapidă', balanced: 'Alternativă', courier: 'Alternativă', avoid: 'Ocolește problemele' };
 const MY_LOC = (lat = 0, lon = 0): Place => ({ id: 'me', name: 'Locația mea', detail: 'GPS', lat, lon, kind: 'mylocation', source: 'gps' });
 let streetIndexCache: { g: unknown; idx: StreetEntry[] } | null = null;
 
@@ -41,7 +41,7 @@ export function RouteScreen({ focus, tech }: { focus: string | null; tech?: NavT
   const reports = useApp((s) => s.reports);
   const [editing, setEditing] = useState<'origin' | 'dest' | null>(focus === 'dest' ? 'dest' : null); // „Unde mergi?” deschide mereu căutarea
   const [picking, setPicking] = useState<'origin' | 'dest' | null>(null);
-  const [selected, setSelected] = useState<ProfileKey>('shortest');
+  const [selected, setSelected] = useState<OptionKey>('shortest');
   const [nav, setNav] = useState(false);
   const [snap, setSnap] = useState<Snap>('peek');
   const [sheetH, setSheetH] = useState(200);
@@ -66,23 +66,42 @@ export function RouteScreen({ focus, tech }: { focus: string | null; tech?: NavT
   const pt = (p: Place | null): [number, number] | null => (!p ? null : p.kind === 'mylocation' ? originFix : [p.lat, p.lon]);
   const A = pt(plan.origin), B = pt(plan.dest);
 
+  // Stratul folosit pentru ruta afișată. Un strat nou (o publicare nouă) NU schimbă în tăcere o rută deja afișată sau
+  // pornită: apare „Actualizează traseul”. O rută nouă (alt A sau B) folosește mereu ultimele date.
+  const [planLayer, setPlanLayer] = useState(layer);
+  const endpoints = `${A?.[0]},${A?.[1]}|${B?.[0]},${B?.[1]}`;
+  const lastEndpoints = useRef(endpoints);
+  useEffect(() => {
+    if (nav) return;
+    if (lastEndpoints.current !== endpoints || !A || !B) { lastEndpoints.current = endpoints; setPlanLayer(layer); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [endpoints, layer, nav]);
+  const staleLayer = planLayer.version !== layer.version && !!A && !!B;
+  const hzMode = hazardModeOf(settings);
+
   const result: PlanResult | null = useMemo(() => {
     if (!graph || !A || !B) return null;
     const src = snapNode(A[0], A[1]), dst = snapNode(B[0], B[1]);
     if (src < 0 || dst < 0) return { options: [], verdict: { kind: 'nodata', text: '' }, error: 'Punctul ales e prea departe de străzile pe care se poate merge cu bicicleta.' };
     if (src === dst) return { options: [], verdict: { kind: 'nodata', text: '' }, error: 'Pornirea și destinația sunt în același loc.' };
-    const zones = layer.zones.filter((z) => z.status === 'REPEATED' || z.status === 'CANDIDATE');
-    return planRoutes(graph, layer, getRouter()!, src, dst, settings.route, { zones, reports });
+    // zonele vechi de șocuri doar pentru straturile publicate înainte de problemele agregate (altfel s-ar număra de două ori)
+    const zones = planLayer.hazards.length ? [] : planLayer.zones.filter((z) => z.status === 'REPEATED' || z.status === 'CANDIDATE');
+    return planRoutes(graph, planLayer, getRouter()!, src, dst, settings.route, { zones, reports }, hzMode);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [graph, layer, A?.[0], A?.[1], B?.[0], B?.[1], settings.route, reports]);
+  }, [graph, planLayer, A?.[0], A?.[1], B?.[0], B?.[1], settings.route, reports, hzMode]);
 
   useEffect(() => { if (result?.options.length && !result.options.some((o) => o.key === selected)) setSelected(result.options[result.options.length - 1].key); }, [result, selected]);
   useEffect(() => { if (result?.verdict.kind === 'better') setSelected(result.verdict.best); }, [result]);
   const chosen = result?.options.find((o) => o.key === selected) ?? result?.options[0] ?? null;
   const routePts = useMemo(() => (graph && chosen ? routeLatLngs(graph, chosen.r.edges) : []), [graph, chosen]);
 
-  useLayerGroup(map, (g) => { if (graph) drawComfort(g, graph, layer, null, { dim: true, explore: false, uncertain: tech ? true : settings.showUncertain }); }, [graph, layer, settings.showUncertain]);
+  useLayerGroup(map, (g) => {
+    if (!graph) return;
+    drawComfort(g, graph, planLayer, null, { dim: true, explore: false, uncertain: tech ? true : settings.showUncertain });
+    drawHazards(g, graph, planLayer.hazards, null, { dim: true });
+  }, [graph, planLayer, settings.showUncertain]);
   const fitted = useRef('');
+  const refreshRoute = () => { setPlanLayer(layer); fitted.current = ''; toast('Traseul folosește acum ultimele date publicate'); };
   useLayerGroup(map, (g) => {
     if (!graph || !result) { if (A) L.marker(A, { icon: pinIcon('A', '#1857f5') }).addTo(g); if (B) L.marker(B, { icon: pinIcon('B', '#c2261b') }).addTo(g); return; }
     for (const o of result.options) {
@@ -194,6 +213,7 @@ export function RouteScreen({ focus, tech }: { focus: string | null; tech?: NavT
             <div style={{ fontSize: 22, fontWeight: 700 }}>{navInfo ? (navInfo.arrived ? 'Ai ajuns' : `${navInfo.uncertain ? '~' : ''}${fmtLen(navInfo.rem)} · ${Math.max(1, Math.round(navInfo.rem / 250))} min`) : loc.message ?? 'Se caută poziția…'}</div>
             {navInfo?.off && <div className="small" style={{ color: 'var(--warn)', fontWeight: 600 }}>Ești în afara rutei</div>}
             {navInfo?.uncertain && <div className="small" style={{ color: 'var(--warn)', fontWeight: 600 }}>Aproape de destinație · GPS imprecis (±{Math.round(loc.fix?.acc ?? 0)} m)</div>}
+            {staleLayer && <button className="btn sm" style={{ marginTop: 6 }} onClick={refreshRoute}><RefreshCw /> Date noi pe hartă · Actualizează traseul</button>}
           </div>
           {!followNav && <button className="icon-btn flat" onClick={() => setFollowNav(true)} aria-label="Recentrează"><LocateFixed /></button>}
         </div>
@@ -220,17 +240,18 @@ export function RouteScreen({ focus, tech }: { focus: string | null; tech?: NavT
           waitingGps={usesMe && !originFix} loc={loc} snap={snap} onSnap={setSnap} onHeight={setSheetH}
           onStart={startNav} extra={tech ? <tech.SheetControl /> : null} dev={!!tech} onRecenter={() => { if (loc.fix) setOriginFix([loc.fix.lat, loc.fix.lon]); }}
           onEditOrigin={() => setEditing('origin')} onClear={() => { void setPlan({ ...plan, dest: null }); setSnap('peek'); }}
-          route={settings.route}
+          route={settings.route} stale={staleLayer} onRefresh={refreshRoute} avoidUncertain={settings.avoidUncertain}
         />
       )}
     </main>
   );
 }
 
-function RouteSheet({ plan, result, selected, onSelect, graphReady, waitingGps, loc, snap, onSnap, onHeight, onStart, extra, dev, onRecenter, onEditOrigin, onClear, route }: {
-  plan: { origin: Place | null; dest: Place | null }; result: PlanResult | null; selected: ProfileKey; onSelect: (k: ProfileKey) => void; graphReady: boolean;
+function RouteSheet({ plan, result, selected, onSelect, graphReady, waitingGps, loc, snap, onSnap, onHeight, onStart, extra, dev, onRecenter, onEditOrigin, onClear, route, stale, onRefresh, avoidUncertain }: {
+  plan: { origin: Place | null; dest: Place | null }; result: PlanResult | null; selected: OptionKey; onSelect: (k: OptionKey) => void; graphReady: boolean;
   waitingGps: boolean; loc: LocState; snap: Snap; onSnap: (s: Snap) => void; onHeight: (h: number) => void;
   onStart: () => void; extra: ReactNode; dev: boolean; onRecenter: () => void; onEditOrigin: () => void; onClear: () => void; route: RouteOptions;
+  stale: boolean; onRefresh: () => void; avoidUncertain: boolean;
 }) {
   const simple = (title: string, body: ReactNode) => (
     <SnapSheet label={title} snap="peek" onSnap={() => {}} onHeight={onHeight} peek={<div className="stack" style={{ paddingTop: 2 }}><h2 className="sheet-title">{title}</h2>{body}</div>} />
@@ -267,7 +288,9 @@ function RouteSheet({ plan, result, selected, onSelect, graphReady, waitingGps, 
       <div className="row" style={{ margin: '6px 0 12px', gap: 6 }}>
         <span className={`badge ${evidence.tone === 'neutral' ? '' : evidence.tone}`}>{evidence.text}</span>
         {result.options.length > 1 && <span className="badge primary">{recommended ? `Recomandată: ${PROFILE_LABEL[chosen.key].toLowerCase()}` : PROFILE_LABEL[chosen.key]}</span>}
+        {chosen.avoided && chosen.avoided.length > 0 && <span className="badge comfort">Evită {chosen.avoided.length} {chosen.avoided.length === 1 ? 'zonă cu probleme' : 'zone cu probleme'}</span>}
       </div>
+      {stale && <button className="btn block sm" style={{ marginBottom: 10 }} onClick={onRefresh}><RefreshCw /> Date noi pe hartă · Actualizează traseul</button>}
       <button className="btn primary block lg" onClick={onStart}><Navigation /> Pornește</button>
       {extra}
     </div>
@@ -276,12 +299,14 @@ function RouteSheet({ plan, result, selected, onSelect, graphReady, waitingGps, 
     <SnapSheet label="Rute" snap={snap} onSnap={onSnap} onHeight={onHeight} peek={peek}>
       <div className="stack">
         {(dev || v.kind === 'better') && <Banner kind={v.kind === 'better' ? 'ok' : v.kind === 'same' ? 'info' : 'warn'}>{v.text}</Banner>}
+        {result.hazardText && <p className="small" style={{ margin: 0 }}>{result.hazardText}</p>}
         <div role="radiogroup" aria-label="Alternative de rută">
           {result.options.map((o) => <RouteCard key={o.key} dev={dev} o={o} on={o.key === chosen.key} recommended={v.kind === 'better' && o.key === v.best} onClick={() => onSelect(o.key)} />)}
         </div>
         {dev && result.options.length === 1 && (v.kind === 'nodata' || v.kind === 'insufficient') && <p className="xs muted">Alternativele mai lungi nu sunt afișate: fără măsurători nu putem spune care e mai confortabilă.</p>}
         <p className="xs muted" style={{ marginTop: 12 }}>Doar căi permise bicicletelor. Confortul nu înseamnă siguranță.</p>
         {plan.origin.kind === 'mylocation' && <button className="btn sm ghost block" onClick={onRecenter}>Pornește de la poziția mea actuală</button>}
+        <label className="switch small"><input type="checkbox" checked={avoidUncertain} onChange={(e) => void updateSettings({ avoidUncertain: e.target.checked })} />Ocolește și problemele posibile (experimental, neconfirmate)</label>
         {dev && <details className="card">
           <summary>Opțiuni de rutare</summary>
           <label className="switch"><input type="checkbox" checked={route.useOsmSurface} onChange={(e) => updateSettings({ route: { ...route, useOsmSurface: e.target.checked } })} />Ține cont de pavajul declarat în OpenStreetMap (estimat, nu măsurat)</label>
@@ -304,8 +329,15 @@ function RouteCard({ o, on, recommended, onClick, dev }: { o: RouteOptionView; o
       <div className="xs" style={{ color: 'var(--fg-2)' }}>
         {dev ? <>{known > 0 ? <>Măsurat {fmtPct(o.s.measured_pct)} · confortabil (A–B) {Math.round(o.knownGoodPct ?? 0)}% din partea măsurată</> : 'Niciun segment măsurat'}{' · '}necunoscut {fmtPct(o.s.unknown_pct)}</>
           : known > 0 ? <>Confort cunoscut pe {fmtPct(o.s.measured_pct)} din drum</> : 'Confort necunoscut'}
-        {(o.problems.zones > 0 || o.problems.reports > 0) && <span style={{ color: 'var(--danger)', fontWeight: 650 }}> · {o.problems.zones + o.problems.reports} probleme cunoscute</span>}
+        {(o.problems.zones > 0 || o.problems.reports > 0) && <span style={{ color: 'var(--danger)', fontWeight: 650 }}> · trece prin {o.problems.zones + o.problems.reports} {o.problems.zones + o.problems.reports === 1 ? 'loc cu probleme' : 'locuri cu probleme'}</span>}
       </div>
+      {o.avoided && o.avoided.length > 0 && (
+        <div className="xs" style={{ color: 'var(--comfort)', fontWeight: 650, marginTop: 4 }}>
+          Evită {o.avoided.length} {o.avoided.length === 1 ? 'zonă cu probleme detectate' : 'zone cu probleme detectate'}
+          {o.avoided.some((h) => h.level === 'possible') ? ' (unele neconfirmate)' : ''}
+          {o.s.measured_pct < 50 ? <span className="muted" style={{ fontWeight: 400 }}> · restul drumului neevaluat</span> : null}
+        </div>
+      )}
       <span className="sr-only">{(['A', 'B', 'C', 'D', 'E'] as const).map((c) => `${t.classShort[c]} ${Math.round(o.knownByClass[c])} metri`).join(', ')}</span>
     </button>
   );

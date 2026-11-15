@@ -9,6 +9,7 @@ import type { StoredRide } from '../storage/idb';
 import { useApp } from '../state/store';
 import { fmtLen } from '../ui/format';
 import { Item } from '../ui/kit';
+import { CoveragePanel, HazardList, useCoverage } from './Hazards';
 
 function useRidePick() {
   const rides = useApp((s) => s.rides);
@@ -74,13 +75,19 @@ export function AnalysisPage() {
 
 export function ZonesPage() {
   const graph = useApp((s) => s.graph);
+  const hazards = useApp((s) => s.layer.hazards);
   const { r, picker } = useRidePick();
   const rr = useMemo(() => (r ? rideRoughness(r.processed, DEFAULT_CONFIG, graph) : null), [r, graph]);
+  const cov = useCoverage();
   return (
     <main className="screen"><div className="wrap stack">
       <h1>Zone și șocuri</h1>
       {!r || !rr ? <NoRides /> : (
         <>
+          <div className="section-label">Probleme detectate automat (toate turele active)</div>
+          <HazardList hazards={hazards} />
+          {cov && <><div className="section-label">Acoperire</div><CoveragePanel c={cov} /></>}
+          <div className="section-label">Analiza pe tură</div>
           {picker}
           <p className="small muted" style={{ margin: 0 }}>{rideSub(r)}</p>
           <div className="funnel">
