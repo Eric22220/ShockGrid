@@ -1,6 +1,6 @@
 {
- "publication_id": "pub-6c1e7c7906d702dbae69",
- "generated_at": "2026-11-19T12:31:29.755Z",
+ "publication_id": "pub-01f3e6ad824354d3bfc6",
+ "generated_at": "2026-11-19T23:19:50.715Z",
  "processing_version": "sg-1.2.0",
  "files": [
   "comfort-layer.json",
@@ -10,16 +10,15 @@
   "publication.json"
  ],
  "counts": {
-  "segments": 0,
+  "segments": 31,
   "measured": 0,
-  "low_confidence": 0,
-  "explored": 0,
-  "hazards_unverified": 0,
-  "hazards_verified": 0,
-  "hazards_possible": 0,
+  "low_confidence": 2,
+  "explored": 29,
+  "hazards_unverified": 10,
+  "hazards_verified": 2,
+  "hazards_possible": 10,
   "hazards_likely": 0,
-  "meters": 0,
-  "reset": true
+  "meters": 1492
  },
- "note": ""
+ "note": "1 tură (ios)"
 }
